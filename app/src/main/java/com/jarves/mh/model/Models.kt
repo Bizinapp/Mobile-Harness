@@ -146,9 +146,19 @@ data class ProviderProfile(
     val hasSecret: Boolean = false,
     /** dsh custom-route wire protocol for CUSTOM: anthropic-messages | openai-completions | openai-responses. */
     val dshApi: String = defaultDshApiForProvider(kind),
+    /** Comma-separated OpenRouter provider slugs, tried in order. Blank keeps automatic routing. */
+    val openRouterProviderOrder: String = "",
+    /** Whether OpenRouter may use providers outside [openRouterProviderOrder]. */
+    val openRouterAllowFallbacks: Boolean = true,
 ) {
     /** Effective base URL: fixed kinds always resolve to their constant, ignoring stored drift. */
     val resolvedBaseUrl: String get() = if (kind.fixedBaseUrl) kind.defaultBaseUrl else baseUrl
+
+    val openRouterProviders: List<String>
+        get() = openRouterProviderOrder.split(',')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
 }
 
 enum class ProjectKind { PROJECT, QUICK_PROJECT }

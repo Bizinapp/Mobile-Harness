@@ -1739,6 +1739,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             key,
             providerProtocolForAgent(profile, _state.value.agentKind),
             models,
+            profile.openRouterProviderOrder,
+            profile.openRouterAllowFallbacks,
         )
     }
 
@@ -1759,6 +1761,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 key,
                 providerProtocolForAgent(profile, _state.value.agentKind),
                 emptyList(),
+                profile.openRouterProviderOrder,
+                profile.openRouterAllowFallbacks,
             )
             when (result) {
                 is ConnectionValidation.Success -> _state.update {

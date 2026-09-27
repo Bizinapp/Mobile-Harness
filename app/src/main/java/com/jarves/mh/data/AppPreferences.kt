@@ -141,6 +141,8 @@ class AppPreferences(private val context: Context) {
             .putString("provider_base_url", profile.baseUrl)
             .putString("provider_model", profile.model)
             .putString("provider_dsh_api", profile.dshApi)
+            .putString("provider_openrouter_order", profile.openRouterProviderOrder)
+            .putBoolean("provider_openrouter_allow_fallbacks", profile.openRouterAllowFallbacks)
         if (agent != null) {
             val prefix = providerPrefix(agent)
             editor
@@ -148,6 +150,8 @@ class AppPreferences(private val context: Context) {
                 .putString("${prefix}base_url", profile.baseUrl)
                 .putString("${prefix}model", profile.model)
                 .putString("${prefix}dsh_api", profile.dshApi)
+                .putString("${prefix}openrouter_order", profile.openRouterProviderOrder)
+                .putBoolean("${prefix}openrouter_allow_fallbacks", profile.openRouterAllowFallbacks)
         }
         editor.apply()
     }
@@ -212,6 +216,16 @@ class AppPreferences(private val context: Context) {
                     ?: defaultDshApiForProvider(kind)
             } else {
                 defaultDshApiForProvider(kind)
+            },
+            openRouterProviderOrder = if (useStoredValues) {
+                preferences.getString("${sourcePrefix}openrouter_order", "").orEmpty()
+            } else {
+                ""
+            },
+            openRouterAllowFallbacks = if (useStoredValues) {
+                preferences.getBoolean("${sourcePrefix}openrouter_allow_fallbacks", true)
+            } else {
+                true
             },
         )
     }

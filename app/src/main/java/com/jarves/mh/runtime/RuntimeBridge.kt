@@ -47,7 +47,7 @@ object RuntimeLaunchConfigBuilder {
                 environment["ANTHROPIC_MODEL"] = profile.model
             }
             com.jarves.mh.model.ProviderProtocol.OPENROUTER -> {
-                environment["ANTHROPIC_BASE_URL"] = profile.baseUrl.trimEnd('/')
+                environment["ANTHROPIC_BASE_URL"] = (localGatewayUrl ?: profile.resolvedBaseUrl).trimEnd('/')
                 environment["ANTHROPIC_MODEL"] = profile.model
             }
             com.jarves.mh.model.ProviderProtocol.OPENAI_RESPONSES,

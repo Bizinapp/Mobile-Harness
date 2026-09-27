@@ -163,6 +163,39 @@ class DshSdkProtocolParserTest {
         assertEquals(DshSdkProtocolEvent.TurnCompleted, completed)
     }
 
+    @Test
+    fun nullJsonRpcErrorUsesUsefulFallback() {
+        val failed = parser.parseLine(
+            JSONObject()
+                .put("jsonrpc", "2.0")
+                .put("id", 2)
+                .put("error", JSONObject().put("message", JSONObject.NULL))
+                .toString(),
+        )
+
+        assertEquals(
+            DshSdkProtocolEvent.Failed("DeepSeek Harness SDK request 2 failed"),
+            failed,
+        )
+    }
+
+    @Test
+    fun nullTurnErrorUsesUsefulFallback() {
+        val failed = parser.parseLine(
+            sessionEvent(
+                "turn/end",
+                JSONObject().put(
+                    "reason",
+                    JSONObject()
+                        .put("kind", "error")
+                        .put("error", JSONObject().put("message", JSONObject.NULL)),
+                ),
+            ),
+        )
+
+        assertEquals(DshSdkProtocolEvent.Failed("DeepSeek Harness turn failed"), failed)
+    }
+
     private fun sessionEvent(type: String, data: JSONObject): String = notification(
         "session.event",
         JSONObject().put("sessionId", "session-1").put(

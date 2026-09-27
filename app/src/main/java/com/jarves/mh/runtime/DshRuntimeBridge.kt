@@ -84,6 +84,7 @@ class DshRuntimeBridge(
             return@withContext sessionId
         }
 
+        var openRouterGateway: OpenRouterRoutingGateway? = null
         runCatching {
             RuntimeTaskController.stopAction = {
                 userStopRequested = true
@@ -105,7 +106,15 @@ class DshRuntimeBridge(
             val workspace = checkpoints.ensureWorkspace(projectId)
             checkpoints.createCheckpoint(projectId, workspace)
             val before = checkpoints.snapshot(workspace)
-            val route = DshRouteMapper.forProfile(provider)
+            val baseRoute = DshRouteMapper.forProfile(provider)
+            openRouterGateway = if (
+                provider.kind == ProviderKind.LLM_ROUTER && provider.openRouterProviders.isNotEmpty()
+            ) OpenRouterRoutingGateway(provider, secret).start() else null
+            val route = if (openRouterGateway != null && baseRoute.custom != null) {
+                baseRoute.copy(custom = baseRoute.custom.copy(baseUrl = openRouterGateway!!.url))
+            } else {
+                baseRoute
+            }
             writeDshSettings(installed.rootfs, route, provider)
             val environment = linkedMapOf(
                 "DSH_HOME" to DSH_HOME_GUEST_PATH,
@@ -178,6 +187,7 @@ class DshRuntimeBridge(
                 )
             }
         }
+        openRouterGateway?.close()
         activeProcess = null
         activeSessionId = null
         RuntimeTaskController.stopAction = null
@@ -498,7 +508,7 @@ class DshRuntimeBridge(
     private fun friendlyError(error: Throwable): String {
         val message = error.message.orEmpty()
         return when {
-            error is DshSessionException -> message
+            error is DshSessionException && message.isMeaningfulDshText() -> message
             message.contains("authentication", true) ||
                 message.contains("invalid api key", true) ||
                 message.contains("autherror", true) ||
@@ -512,7 +522,7 @@ class DshRuntimeBridge(
             message.contains("missing_credential", true) ->
                 "No API key reached DeepSeek Harness. Re-save the provider key in Settings."
             message.contains("not installed", true) -> message.take(300)
-            message.isBlank() -> "DeepSeek Harness could not start."
+            !message.isMeaningfulDshText() -> "DeepSeek Harness could not start."
             else -> message.take(500)
         }
     }
@@ -759,6 +769,9 @@ internal sealed interface DshSdkProtocolEvent {
     data object Ignored : DshSdkProtocolEvent
 }
 
+private fun String.isMeaningfulDshText(): Boolean =
+    isNotBlank() && !trim().equals("null", ignoreCase = true)
+
 /** Stateful parser for the pinned dsh SDK's newline-delimited JSON-RPC stream. */
 internal class DshSdkProtocolParser(private val expectedSessionId: String) {
     private val reasoningByBlock = mutableMapOf<Long, StringBuilder>()
@@ -769,7 +782,11 @@ internal class DshSdkProtocolParser(private val expectedSessionId: String) {
     fun parseLine(line: String): DshSdkProtocolEvent {
         val frame = runCatching { JSONObject(line) }.getOrNull()
             ?: return if (line.startsWith("dsh:", ignoreCase = true)) {
-                DshSdkProtocolEvent.Failed(line.removePrefix("dsh:").trim())
+                DshSdkProtocolEvent.Failed(
+                    line.removePrefix("dsh:").trim().meaningfulDshText(
+                        "DeepSeek Harness reported an unspecified error",
+                    ),
+                )
             } else {
                 DshSdkProtocolEvent.Ignored
             }
@@ -778,7 +795,7 @@ internal class DshSdkProtocolParser(private val expectedSessionId: String) {
             val id = frame.optInt("id", -1)
             frame.optJSONObject("error")?.let { error ->
                 return DshSdkProtocolEvent.Failed(
-                    error.optString("message").ifBlank { "DeepSeek Harness SDK request $id failed" },
+                    error.optString("message").meaningfulDshText("DeepSeek Harness SDK request $id failed"),
                 )
             }
             return when (id) {
@@ -836,7 +853,7 @@ internal class DshSdkProtocolParser(private val expectedSessionId: String) {
                 val error = data.optJSONObject("error")
                 val text = contentText(resultBlock?.optJSONArray("content"))
                 val summary = error?.optString("message").orEmpty()
-                    .ifBlank { text }
+                    .meaningfulDshText(text)
                     .replace(Regex("\\s+"), " ")
                     .trim()
                     .take(180)
@@ -848,7 +865,7 @@ internal class DshSdkProtocolParser(private val expectedSessionId: String) {
                 when (reason?.optString("kind")) {
                     "error" -> DshSdkProtocolEvent.Failed(
                         reason.optJSONObject("error")?.optString("message").orEmpty()
-                            .ifBlank { "DeepSeek Harness turn failed" },
+                            .meaningfulDshText("DeepSeek Harness turn failed"),
                     )
                     "blocked" -> DshSdkProtocolEvent.Failed("DeepSeek Harness was blocked from completing the task")
                     else -> DshSdkProtocolEvent.TurnCompleted
@@ -857,6 +874,9 @@ internal class DshSdkProtocolParser(private val expectedSessionId: String) {
             else -> DshSdkProtocolEvent.Ignored
         }
     }
+
+    private fun String.meaningfulDshText(fallback: String): String =
+        if (isMeaningfulDshText()) trim() else fallback
 
     private fun parseAssistantChunk(data: JSONObject): DshSdkProtocolEvent {
         val chunk = data.optJSONObject("chunk") ?: return DshSdkProtocolEvent.Ignored

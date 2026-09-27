@@ -3,6 +3,7 @@ package com.jarves.mh.network
 import com.jarves.mh.model.ProviderProtocol
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class ProviderApiClientTest {
@@ -22,5 +23,23 @@ class ProviderApiClientTest {
         assertEquals("input_text", content.getString("type"))
         assertEquals("Hello, reply with 1 word.", content.getString("text"))
         assertEquals(false, body.has("max_output_tokens"))
+    }
+
+    @Test
+    fun openRouterProbeIncludesRequestedProviderOrder() {
+        val body = JSONObject(
+            ProviderApiClient().validationBody(
+                model = "anthropic/claude-sonnet-4.6",
+                protocol = ProviderProtocol.OPENROUTER,
+                openRouterProviderOrder = " anthropic, amazon-bedrock, anthropic ",
+                openRouterAllowFallbacks = false,
+            ),
+        )
+
+        val routing = body.getJSONObject("provider")
+        assertEquals(listOf("anthropic", "amazon-bedrock"), routing.getJSONArray("order").let { array ->
+            (0 until array.length()).map(array::getString)
+        })
+        assertFalse(routing.getBoolean("allow_fallbacks"))
     }
 }

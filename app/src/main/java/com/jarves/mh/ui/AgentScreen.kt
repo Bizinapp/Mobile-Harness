@@ -64,6 +64,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -179,6 +180,12 @@ fun AgentScreen(
     var baseUrl by rememberSaveable(state.provider.baseUrl) { mutableStateOf(state.provider.baseUrl) }
     var model by rememberSaveable(state.provider.model) { mutableStateOf(state.provider.model) }
     var dshApi by rememberSaveable(state.provider.dshApi) { mutableStateOf(state.provider.dshApi) }
+    var openRouterProviderOrder by rememberSaveable(state.provider.openRouterProviderOrder) {
+        mutableStateOf(state.provider.openRouterProviderOrder)
+    }
+    var openRouterAllowFallbacks by rememberSaveable(state.provider.openRouterAllowFallbacks) {
+        mutableStateOf(state.provider.openRouterAllowFallbacks)
+    }
     var apiKey by rememberSaveable(selectedKind) { mutableStateOf(getSavedApiKey(selectedKind)) }
     var savedKeys by remember(selectedKind, state.activeApiKeyName) {
         mutableStateOf(getSavedApiKeys(selectedKind))
@@ -262,7 +269,14 @@ fun AgentScreen(
             statusProviderMessage = null
             val kind = selectedKind
             val url = if (kind.fixedBaseUrl) kind.defaultBaseUrl else baseUrl.trim()
-            val profile = ProviderProfile(kind, url, model.trim(), dshApi = dshApi)
+            val profile = ProviderProfile(
+                kind,
+                url,
+                model.trim(),
+                dshApi = dshApi,
+                openRouterProviderOrder = openRouterProviderOrder,
+                openRouterAllowFallbacks = openRouterAllowFallbacks,
+            )
             when (val result = onDiscoverModels(profile, effectiveKey)) {
                 is ModelDiscoveryResult.Success -> {
                     models = result.models
@@ -960,6 +974,8 @@ fun AgentScreen(
                         baseUrl = baseUrl,
                         model = model,
                         dshApi = dshApi,
+                        openRouterProviderOrder = openRouterProviderOrder,
+                        openRouterAllowFallbacks = openRouterAllowFallbacks,
                         apiKey = apiKey,
                         models = models,
                         isDiscovering = isDiscovering,
@@ -977,6 +993,8 @@ fun AgentScreen(
                             baseUrl = kind.defaultBaseUrl
                             model = kind.defaultModel
                             dshApi = defaultDshApiForProvider(kind)
+                            openRouterProviderOrder = ""
+                            openRouterAllowFallbacks = true
                             models = emptyList()
                             modelSearch = ""
                             showModels = false
@@ -997,6 +1015,18 @@ fun AgentScreen(
                         },
                         onModel = { model = it; status = null; statusProviderMessage = null; keyConnectionStatuses = emptyMap() },
                         onDshApi = { dshApi = it; status = null; statusProviderMessage = null; keyConnectionStatuses = emptyMap() },
+                        onOpenRouterProviderOrder = {
+                            openRouterProviderOrder = it
+                            status = null
+                            statusProviderMessage = null
+                            keyConnectionStatuses = emptyMap()
+                        },
+                        onOpenRouterAllowFallbacks = {
+                            openRouterAllowFallbacks = it
+                            status = null
+                            statusProviderMessage = null
+                            keyConnectionStatuses = emptyMap()
+                        },
                         onNewKeyName = { newKeyName = it },
                         onNewApiKey = { newApiKey = it },
                         onToggleNewKey = { newKeyVisible = !newKeyVisible },
@@ -1039,7 +1069,14 @@ fun AgentScreen(
                                 }
                                 val kind = selectedKind
                                 val url = if (kind.fixedBaseUrl) kind.defaultBaseUrl else baseUrl.trim()
-                                val profile = ProviderProfile(kind, url, model.trim(), dshApi = dshApi)
+                                val profile = ProviderProfile(
+                                    kind,
+                                    url,
+                                    model.trim(),
+                                    dshApi = dshApi,
+                                    openRouterProviderOrder = openRouterProviderOrder,
+                                    openRouterAllowFallbacks = openRouterAllowFallbacks,
+                                )
                                 if (kind == ProviderKind.CLAUDE) {
                                     onSaveProvider(profile, apiKey.trim())
                                     status = "Claude subscription token saved securely. Send a message to verify your subscription."
@@ -1442,6 +1479,8 @@ private fun AgentProviderCard(
     baseUrl: String,
     model: String,
     dshApi: String,
+    openRouterProviderOrder: String,
+    openRouterAllowFallbacks: Boolean,
     apiKey: String,
     models: List<DiscoveredModel>,
     isDiscovering: Boolean,
@@ -1458,6 +1497,8 @@ private fun AgentProviderCard(
     onBaseUrl: (String) -> Unit,
     onModel: (String) -> Unit,
     onDshApi: (String) -> Unit,
+    onOpenRouterProviderOrder: (String) -> Unit,
+    onOpenRouterAllowFallbacks: (Boolean) -> Unit,
     onNewKeyName: (String) -> Unit,
     onNewApiKey: (String) -> Unit,
     onToggleNewKey: () -> Unit,
@@ -1576,6 +1617,38 @@ private fun AgentProviderCard(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                         )
+                        if (selectedKind == ProviderKind.LLM_ROUTER) {
+                            OutlinedTextField(
+                                value = openRouterProviderOrder,
+                                onValueChange = onOpenRouterProviderOrder,
+                                label = { Text("Provider order") },
+                                placeholder = { Text("exacto, together") },
+                                supportingText = {
+                                    Text("Optional OpenRouter provider slugs, separated by commas and tried in order.")
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Allow provider fallbacks", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Turn off to use only the providers listed above.",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Switch(
+                                    checked = openRouterAllowFallbacks,
+                                    onCheckedChange = onOpenRouterAllowFallbacks,
+                                    enabled = openRouterProviderOrder.isNotBlank(),
+                                )
+                            }
+                        }
                         if (state.agentKind == AgentKind.DEEPSEEK_HARNESS && selectedKind in DSH_PROTOCOL_PROVIDERS && !selectedKind.fixedProtocol) {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 Text("Gateway protocol", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
