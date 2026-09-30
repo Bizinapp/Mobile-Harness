@@ -228,7 +228,7 @@ fun SettingsScreen(
             }
 
             item {
-                val installedCount = state.installedDevStacks.size
+                val installedCount = state.installedDevStacks.count { it != DevStack.WEB }
                 SettingsAccordion(
                     title = "Developer tools",
                     subtitle = "Core tools + $installedCount optional toolchain${if (installedCount == 1) "" else "s"}",
