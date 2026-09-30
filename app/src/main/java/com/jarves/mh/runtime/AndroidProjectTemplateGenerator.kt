@@ -48,7 +48,6 @@ object AndroidProjectTemplateGenerator {
             }
         """)
         write(root, "gradle.properties", """
-            org.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8
             android.useAndroidX=true
             kotlin.code.style=official
             android.nonTransitiveRClass=true
