@@ -1082,16 +1082,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (setupCompletionHandled) return
                 setupCompletionHandled = true
                 preferences.runtimeSetupComplete = true
-                if (preferences.onboardingComplete) {
-                    viewModelScope.launch { initializeRuntime() }
-                } else {
-                    _state.update {
-                        it.copy(
-                            startupStage = StartupStage.MODEL_SETUP,
-                            startupProgress = 1f,
-                            startupBytes = null,
-                            startupIndeterminate = false,
-                        )
+                viewModelScope.launch {
+                    val installedStacks = withContext(Dispatchers.IO) { installer.installedStacks() }
+                    _state.update { it.copy(installedDevStacks = installedStacks) }
+                    if (preferences.onboardingComplete) {
+                        initializeRuntime()
+                    } else {
+                        _state.update {
+                            it.copy(
+                                startupStage = StartupStage.MODEL_SETUP,
+                                startupProgress = 1f,
+                                startupBytes = null,
+                                startupIndeterminate = false,
+                            )
+                        }
                     }
                 }
             }
@@ -1156,6 +1160,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     startupStage = StartupStage.READY,
                     startupProgress = 1f,
+                    installedDevStacks = installer.installedStacks(),
                     installedAgentVersions = installer.installedAgentVersions(),
                 )
             }
