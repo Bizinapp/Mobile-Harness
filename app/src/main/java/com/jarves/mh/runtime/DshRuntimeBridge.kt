@@ -234,6 +234,17 @@ class DshRuntimeBridge(
             runCatching { writer.close() }
         }
 
+        fun finishTurnAndShutdown() {
+            if (shutdownSent) return
+            completed = sawActivity && failure.isBlank()
+            if (!completed && failure.isBlank()) {
+                failure = "DeepSeek Harness stopped before processing the prompt"
+            }
+            shutdownSent = true
+            shutdownSentAt = android.os.SystemClock.elapsedRealtime()
+            send("shutdown", SDK_SHUTDOWN_ID)
+        }
+
         send(
             method = "initialize",
             id = SDK_INITIALIZE_ID,
@@ -264,13 +275,7 @@ class DshRuntimeBridge(
                         sawRunning = true
                         pushForegroundProgress("DeepSeek Harness is working…")
                     } else if (sawRunning && !shutdownSent) {
-                        completed = sawActivity && failure.isBlank()
-                        if (!completed && failure.isBlank()) {
-                            failure = "DeepSeek Harness stopped before processing the prompt"
-                        }
-                        shutdownSent = true
-                        shutdownSentAt = android.os.SystemClock.elapsedRealtime()
-                        send("shutdown", SDK_SHUTDOWN_ID)
+                        finishTurnAndShutdown()
                     }
                 }
                 is DshSdkProtocolEvent.Reasoning -> {
@@ -301,7 +306,13 @@ class DshRuntimeBridge(
                     eventBus.emit(RuntimeEvent.AssistantDelta(sessionId, protocolEvent.text))
                 }
                 is DshSdkProtocolEvent.Failed -> failure = protocolEvent.message
-                DshSdkProtocolEvent.TurnCompleted -> sawActivity = true
+                DshSdkProtocolEvent.TurnCompleted -> {
+                    // Some dsh builds finish a turn without publishing the expected
+                    // follow-up `session.status: idle` notification. Treat turn/end
+                    // as authoritative so the UI cannot remain stuck in Running.
+                    sawActivity = true
+                    finishTurnAndShutdown()
+                }
                 DshSdkProtocolEvent.ShutdownAcknowledged -> closeInput()
                 DshSdkProtocolEvent.Ignored -> Unit
             }

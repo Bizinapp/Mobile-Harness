@@ -353,6 +353,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             onBack = viewModel::closeProject,
             onSend = viewModel::sendPrompt,
             onStop = viewModel::stopTask,
+            onSteerFollowUp = viewModel::steerQueuedFollowUp,
+            onRemoveFollowUp = viewModel::removeQueuedFollowUp,
             onApproval = viewModel::answerApproval,
             onRefreshFiles = viewModel::refreshProjectFiles,
             onOpenFile = viewModel::openFile,
@@ -4245,6 +4247,8 @@ private fun WorkspaceScreen(
     onBack: () -> Unit,
     onSend: (String) -> Unit,
     onStop: () -> Unit,
+    onSteerFollowUp: (String) -> Unit,
+    onRemoveFollowUp: (String) -> Unit,
     onApproval: (Boolean) -> Unit,
     onRefreshFiles: () -> Unit,
     onOpenFile: (WorkspaceEntry) -> Unit,
@@ -4589,6 +4593,9 @@ private fun WorkspaceScreen(
                         onTerminalOpened()
                         onTerminalPrepare(command)
                     },
+                    queuedFollowUps = state.queuedFollowUps,
+                    onSteerFollowUp = onSteerFollowUp,
+                    onRemoveFollowUp = onRemoveFollowUp,
                 )
                 WorkspaceTab.FILES -> FilesTab(
                     files = state.workspaceFiles,
@@ -4961,6 +4968,9 @@ private fun ChatTab(
     onRemoveAttachment: (String) -> Unit,
     onOpenAttachment: (ChatAttachment) -> Unit,
     onRunInTerminal: (String) -> Unit,
+    queuedFollowUps: List<QueuedFollowUp> = emptyList(),
+    onSteerFollowUp: (String) -> Unit = {},
+    onRemoveFollowUp: (String) -> Unit = {},
     readOnly: Boolean = false,
     readOnlyBlocked: Boolean = false,
     onContinueHere: () -> Unit = {},
@@ -5082,6 +5092,24 @@ private fun ChatTab(
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
+                if (queuedFollowUps.isNotEmpty()) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 180.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        queuedFollowUps.forEach { followUp ->
+                            QueuedFollowUpCard(
+                                followUp = followUp,
+                                onSteer = { onSteerFollowUp(followUp.id) },
+                                onRemove = { onRemoveFollowUp(followUp.id) },
+                            )
+                        }
+                    }
+                }
                 if (pendingAttachments.isNotEmpty()) {
                     Row(
                         Modifier
@@ -5119,7 +5147,7 @@ private fun ChatTab(
                     ) {
                         IconButton(
                             onClick = onAttach,
-                            enabled = !isRunning && pendingAttachments.size < 5,
+                            enabled = pendingAttachments.size < 5,
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
@@ -5178,7 +5206,9 @@ private fun ChatTab(
                                     modifier = Modifier.size(18.dp),
                                 )
                             }
-                        } else {
+                            if (canSend) Spacer(Modifier.width(6.dp))
+                        }
+                        if (!isRunning || canSend) {
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -5207,6 +5237,51 @@ private fun ChatTab(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueuedFollowUpCard(
+    followUp: QueuedFollowUp,
+    onSteer: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    followUp.prompt,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (followUp.attachments.isNotEmpty()) {
+                    Text(
+                        "${followUp.attachments.size} attachment${if (followUp.attachments.size == 1) "" else "s"}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            TextButton(onClick = onSteer) { Text("Steer") }
+            IconButton(onClick = onRemove, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Remove queued follow-up",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

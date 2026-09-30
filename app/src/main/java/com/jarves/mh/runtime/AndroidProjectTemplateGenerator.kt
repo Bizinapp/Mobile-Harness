@@ -119,7 +119,16 @@ object AndroidProjectTemplateGenerator {
             </manifest>
         """)
         write(root, "app/src/main/res/values/themes.xml", """
-            <resources><style name="Theme.PocketDevApp" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:colorAccent">#6750A4</item></style></resources>
+            <resources>
+                <style name="Theme.PocketDevApp" parent="android:style/Theme.Material.Light.NoActionBar">
+                    <item name="android:fontFamily">sans</item>
+                    <item name="android:colorAccent">#6750A4</item>
+                    <item name="android:statusBarColor">#FFFBFE</item>
+                    <item name="android:navigationBarColor">#FFFBFE</item>
+                    <item name="android:windowLightStatusBar">true</item>
+                    <item name="android:windowLightNavigationBar">true</item>
+                </style>
+            </resources>
         """)
         write(root, "app/src/main/java/$packagePath/MainActivity.kt", """
             package $namespace
@@ -167,7 +176,26 @@ object AndroidProjectTemplateGenerator {
             </manifest>
         """)
         write(root, "app/src/main/res/values/themes.xml", """
-            <resources><style name="Theme.PocketDevApp" parent="Theme.MaterialComponents.DayNight.NoActionBar"><item name="colorPrimary">#6750A4</item></style></resources>
+            <resources>
+                <style name="Theme.PocketDevApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+                    <item name="colorPrimary">#6750A4</item>
+                    <item name="android:statusBarColor">?android:colorBackground</item>
+                    <item name="android:navigationBarColor">?android:colorBackground</item>
+                    <item name="android:windowLightStatusBar">true</item>
+                    <item name="android:windowLightNavigationBar">true</item>
+                </style>
+            </resources>
+        """)
+        write(root, "app/src/main/res/values-night/themes.xml", """
+            <resources>
+                <style name="Theme.PocketDevApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+                    <item name="colorPrimary">#D0BCFF</item>
+                    <item name="android:statusBarColor">?android:colorBackground</item>
+                    <item name="android:navigationBarColor">?android:colorBackground</item>
+                    <item name="android:windowLightStatusBar">false</item>
+                    <item name="android:windowLightNavigationBar">false</item>
+                </style>
+            </resources>
         """)
         write(root, "app/src/main/res/layout/activity_main.xml", """
             <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:orientation="vertical">

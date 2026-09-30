@@ -24,6 +24,7 @@ class AndroidDevelopmentWorkflowTest {
         assertTrue(File(project, "app/src/main/AndroidManifest.xml").isFile)
         assertTrue(File(project, "app/src/main/java/com/pocketdev/compose_demo/MainActivity.kt").readText().contains("setContent"))
         assertTrue(File(project, "app/build.gradle.kts").readText().contains("compose = true"))
+        assertTrue(File(project, "app/src/main/res/values/themes.xml").readText().contains("android:windowLightStatusBar\">true"))
     }
 
     @Test

@@ -136,6 +136,13 @@ private data class RuntimeRetryRequest(
     val provider: ProviderProfile,
 )
 
+data class QueuedFollowUp(
+    val id: String = UUID.randomUUID().toString(),
+    val projectId: String,
+    val prompt: String,
+    val attachments: List<ChatAttachment>,
+)
+
 private data class TranscriptWrite(
     val projectId: String,
     val chatId: String,
@@ -209,6 +216,7 @@ data class AppUiState(
     val previewReady: Boolean = false,
     val previewUrl: String? = null,
     val isRunning: Boolean = false,
+    val queuedFollowUps: List<QueuedFollowUp> = emptyList(),
     val activeSessionId: String? = null,
     val toastMessage: String? = null,
     val projectTerminalLines: List<TerminalOutputLine> = emptyList(),
@@ -299,6 +307,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var githubAuthJob: kotlinx.coroutines.Job? = null
     @Volatile private var lastOpenedAntigravityAuthUrl: String? = null
     private var activeRuntimeRequest: RuntimeRetryRequest? = null
+    private val pendingFollowUps = java.util.ArrayDeque<QueuedFollowUp>()
+    @Volatile private var steeringToFollowUp: Boolean = false
     private val failedApiKeyIds = mutableSetOf<String>()
     private val transcriptWrites = Channel<TranscriptWrite>(Channel.UNLIMITED)
     private val initialAgentKind = AgentKind.fromStored(preferences.agentKind)
@@ -1010,6 +1020,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 androidBuildProcess = null
                 androidBuildStopRequested = false
                 RuntimeTaskController.stopAction = null
+                steeringToFollowUp = false
+                if (pendingFollowUps.isNotEmpty()) {
+                    viewModelScope.launch {
+                        delay(150)
+                        if (!_state.value.isRunning && !_state.value.androidBuildRunning && !_state.value.projectTerminalRunning) {
+                            startNextFollowUp()
+                        }
+                    }
+                }
             }
         }
     }
@@ -3119,7 +3138,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val current = _state.value
         val project = current.activeProject ?: return
         val chatId = current.activeChatId ?: return
-        if (current.isRunning || uris.isEmpty()) return
+        if (uris.isEmpty()) return
         val remaining = (MAX_ATTACHMENTS_PER_MESSAGE - current.pendingAttachments.size).coerceAtLeast(0)
         if (remaining == 0) {
             _state.update { it.copy(toastMessage = "You can attach up to $MAX_ATTACHMENTS_PER_MESSAGE files per message") }
@@ -3252,7 +3271,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val attachments = state.value.pendingAttachments
-        if ((prompt.isBlank() && attachments.isEmpty()) || state.value.isRunning || state.value.projectTerminalRunning || state.value.androidBuildRunning) return
+        if (prompt.isBlank() && attachments.isEmpty()) return
+        if (state.value.isRunning || state.value.androidBuildRunning) {
+            queueFollowUp(project, prompt, attachments)
+            return
+        }
+        if (state.value.projectTerminalRunning) {
+            _state.update { it.copy(toastMessage = "Wait for the terminal command to finish, then send your message.") }
+            return
+        }
+        startPrompt(project, prompt, attachments)
+    }
+
+    private fun queueFollowUp(project: Project, prompt: String, attachments: List<ChatAttachment>) {
+        val requestText = prompt.trim().ifBlank { "Please review the attached files." }
+        pendingFollowUps.addLast(QueuedFollowUp(projectId = project.id, prompt = requestText, attachments = attachments))
+        _state.update {
+            it.copy(
+                pendingAttachments = emptyList(),
+                queuedFollowUps = pendingFollowUps.toList(),
+                toastMessage = "Follow-up queued",
+            )
+        }
+    }
+
+    fun steerQueuedFollowUp(id: String) {
+        if (steeringToFollowUp) return
+        val selected = pendingFollowUps.firstOrNull { it.id == id } ?: return
+        pendingFollowUps.remove(selected)
+        pendingFollowUps.addFirst(selected)
+        _state.update {
+            it.copy(
+                queuedFollowUps = pendingFollowUps.toList(),
+                toastMessage = "Steering to this follow-up",
+            )
+        }
+        when {
+            _state.value.isRunning -> {
+                steeringToFollowUp = true
+                viewModelScope.launch { activeRuntime().stopActiveSession() }
+            }
+            _state.value.androidBuildRunning -> {
+                steeringToFollowUp = true
+                cancelAndroidBuild()
+            }
+            else -> startNextFollowUp()
+        }
+    }
+
+    fun removeQueuedFollowUp(id: String) {
+        val selected = pendingFollowUps.firstOrNull { it.id == id } ?: return
+        pendingFollowUps.remove(selected)
+        _state.update { it.copy(queuedFollowUps = pendingFollowUps.toList()) }
+    }
+
+    private fun startPrompt(project: Project, prompt: String, attachments: List<ChatAttachment>) {
         val requestText = prompt.trim().ifBlank { "Please review the attached files." }
         updateActiveChatTitle(requestText)
         _state.update {
@@ -3313,7 +3386,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopTask() {
         if (!_state.value.isRunning) return
+        steeringToFollowUp = false
+        pendingFollowUps.clear()
+        _state.update { it.copy(queuedFollowUps = emptyList()) }
         viewModelScope.launch { activeRuntime().stopActiveSession() }
+    }
+
+    private fun startNextFollowUp() {
+        val next = if (pendingFollowUps.isEmpty()) null else pendingFollowUps.removeFirst()
+        if (next == null) {
+            _state.update { it.copy(queuedFollowUps = emptyList()) }
+            return
+        }
+        val project = _state.value.activeProject
+        if (project == null || project.id != next.projectId) {
+            pendingFollowUps.clear()
+            _state.update { it.copy(queuedFollowUps = emptyList()) }
+            return
+        }
+        _state.update { it.copy(queuedFollowUps = pendingFollowUps.toList()) }
+        startPrompt(project, next.prompt, next.attachments)
     }
 
     fun undoLastChanges() {
@@ -3463,6 +3555,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun onRuntimeEvent(event: RuntimeEvent) {
+        val terminalEventForActiveSession =
+            (event is RuntimeEvent.SessionCompleted || event is RuntimeEvent.SessionFailed) &&
+                _state.value.isRunning &&
+                (_state.value.activeSessionId == null || _state.value.activeSessionId == event.sessionId)
         if (event is RuntimeEvent.SessionFailed && _state.value.agentKind == AgentKind.ANTIGRAVITY &&
             (event.reason.contains("sign-in", true) || event.reason.contains("authentication", true))) {
             antigravityAuthController.invalidateSession(event.reason)
@@ -3656,9 +3752,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        if (event is RuntimeEvent.SessionCompleted || event is RuntimeEvent.SessionFailed) {
+        if (terminalEventForActiveSession) {
             activeRuntimeRequest = null
             failedApiKeyIds.clear()
+            steeringToFollowUp = false
+            if (pendingFollowUps.isNotEmpty()) {
+                viewModelScope.launch {
+                    delay(150)
+                    if (!_state.value.isRunning) startNextFollowUp()
+                }
+            }
         }
         if (event is RuntimeEvent.FilesChanged || event is RuntimeEvent.SessionCompleted) {
             _state.value.activeProject?.id?.let { touchProject(it) }
