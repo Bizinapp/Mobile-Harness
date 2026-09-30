@@ -74,12 +74,14 @@ class ProviderApiClient {
         apiKey: String,
         protocol: ProviderProtocol,
         discoveredModels: List<DiscoveredModel>,
+        openRouterProviderOrder: String = "",
+        openRouterAllowFallbacks: Boolean = true,
     ): ConnectionValidation = withContext(Dispatchers.IO) {
         if (baseUrl.isBlank() || model.isBlank() || apiKey.isBlank()) {
             return@withContext ConnectionValidation.Failure("Base URL, model, and API key are required.")
         }
         val endpoint = messagesEndpoint(baseUrl, protocol)
-        val body = validationBody(model, protocol)
+        val body = validationBody(model, protocol, openRouterProviderOrder, openRouterAllowFallbacks)
         // Gateways may need to cold-start a model before returning the first token.
         // A ten-second validation timeout produced false "network" failures even
         // though discovery and the endpoint itself were healthy.
@@ -200,7 +202,12 @@ class ProviderApiClient {
             url.path.trimEnd('/').endsWith("/models")
     }.getOrDefault(false)
 
-    internal fun validationBody(model: String, protocol: ProviderProtocol): String = when (protocol) {
+    internal fun validationBody(
+        model: String,
+        protocol: ProviderProtocol,
+        openRouterProviderOrder: String = "",
+        openRouterAllowFallbacks: Boolean = true,
+    ): String = when (protocol) {
         ProviderProtocol.OPENAI_RESPONSES -> JSONObject()
             .put("model", model)
             .put(
@@ -228,6 +235,20 @@ class ProviderApiClient {
             .put("model", model)
             .put("max_tokens", 1)
             .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", "Reply OK")))
+            .also { body ->
+                val providers = openRouterProviderOrder.split(',')
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                if (protocol == ProviderProtocol.OPENROUTER && providers.isNotEmpty()) {
+                    body.put(
+                        "provider",
+                        JSONObject()
+                            .put("order", JSONArray(providers))
+                            .put("allow_fallbacks", openRouterAllowFallbacks),
+                    )
+                }
+            }
             .toString()
     }
 

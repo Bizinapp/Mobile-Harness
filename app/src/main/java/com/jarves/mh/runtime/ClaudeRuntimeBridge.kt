@@ -119,6 +119,7 @@ class ClaudeRuntimeBridge(
         }
 
         var formatGateway: LocalFormatGateway? = null
+        var openRouterGateway: OpenRouterRoutingGateway? = null
         runCatching {
             RuntimeTaskController.stopAction = {
                 userStopRequested = true
@@ -144,7 +145,14 @@ class ClaudeRuntimeBridge(
                     com.jarves.mh.model.ProviderProtocol.OPENAI_CHAT,
                     com.jarves.mh.model.ProviderProtocol.OPENAI_RESPONSES,
                 )) LocalFormatGateway(provider, secret).start() else null
-            val launch = RuntimeLaunchConfigBuilder.build(provider, authToken = secret, localGatewayUrl = formatGateway?.url)
+            openRouterGateway = if (
+                provider.kind == ProviderKind.LLM_ROUTER && provider.openRouterProviders.isNotEmpty()
+            ) OpenRouterRoutingGateway(provider, secret).start() else null
+            val launch = RuntimeLaunchConfigBuilder.build(
+                provider,
+                authToken = secret,
+                localGatewayUrl = formatGateway?.url ?: openRouterGateway?.url,
+            )
             Log.d("ClaudeBridge", "Provider: ${provider.kind}, Model: ${provider.model}, BaseUrl: ${provider.baseUrl}")
             Log.d("ClaudeBridge", "Launch environment keys: ${launch.environment.keys}")
 
@@ -266,6 +274,7 @@ class ClaudeRuntimeBridge(
             }
         }
         formatGateway?.close()
+        openRouterGateway?.close()
         activeProcess = null
         activeSessionId = null
         RuntimeTaskController.stopAction = null

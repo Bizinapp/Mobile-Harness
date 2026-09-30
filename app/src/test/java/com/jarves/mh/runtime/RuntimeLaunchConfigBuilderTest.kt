@@ -58,6 +58,17 @@ class RuntimeLaunchConfigBuilderTest {
     }
 
     @Test
+    fun openRouterCanUseLocalRoutingGateway() {
+        val config = RuntimeLaunchConfigBuilder.build(
+            ProviderProfile(ProviderKind.LLM_ROUTER),
+            authToken = "temporary-openrouter-secret",
+            localGatewayUrl = "http://127.0.0.1:23456",
+        )
+
+        assertEquals("http://127.0.0.1:23456", config.environment["ANTHROPIC_BASE_URL"])
+    }
+
+    @Test
     fun claudeSubscriptionUsesOAuthTokenWithoutApiKeyFallback() {
         val config = RuntimeLaunchConfigBuilder.build(
             ProviderProfile(ProviderKind.CLAUDE),
