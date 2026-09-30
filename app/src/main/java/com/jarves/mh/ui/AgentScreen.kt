@@ -216,6 +216,12 @@ fun AgentScreen(
 ) {
     val scope = rememberCoroutineScope()
     var selectedKind by rememberSaveable(state.provider.kind) { mutableStateOf(state.provider.kind) }
+    val selectedProviderTitle = stringResource(agentProviderTitleResource(selectedKind))
+    val selectedProviderVerifiedMessage = stringResource(
+        R.string.agent_connection_verified,
+        selectedProviderTitle,
+    )
+    val verifiedStatusLabel = stringResource(R.string.agent_status_verified)
     var baseUrl by rememberSaveable(state.provider.baseUrl) { mutableStateOf(state.provider.baseUrl) }
     var model by rememberSaveable(state.provider.model) { mutableStateOf(state.provider.model) }
     var dshApi by rememberSaveable(state.provider.dshApi) { mutableStateOf(state.provider.dshApi) }
@@ -1137,9 +1143,9 @@ fun AgentScreen(
                                         onSaveProvider(profile, apiKey.trim())
                                         if (activeKeyId != null) {
                                             keyConnectionStatuses = keyConnectionStatuses +
-                                                (activeKeyId to KeyConnectionStatus(result.message, true, label = "Verified"))
+                                                (activeKeyId to KeyConnectionStatus(selectedProviderVerifiedMessage, true, label = verifiedStatusLabel))
                                         } else {
-                                            status = result.message
+                                            status = selectedProviderVerifiedMessage
                                             statusOk = true
                                         }
                                     }

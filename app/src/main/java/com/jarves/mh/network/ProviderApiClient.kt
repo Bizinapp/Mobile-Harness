@@ -87,13 +87,7 @@ class ProviderApiClient {
         // though discovery and the endpoint itself were healthy.
         val response = request(endpoint, "POST", apiKey, body, protocol, connectTimeoutMs = 12_000, readTimeoutMs = 45_000)
         when {
-            response.code in 200..299 -> ConnectionValidation.Success(
-                if (protocol == ProviderProtocol.ANTHROPIC || protocol == ProviderProtocol.ANTHROPIC_GATEWAY || protocol == ProviderProtocol.OPENROUTER) {
-                    "Anthropic Messages endpoint verified. Claude Code settings are ready."
-                } else {
-                    "Connection successful. Claude Code settings are ready."
-                },
-            )
+            response.code in 200..299 -> ConnectionValidation.Success("Connection verified.")
             response.code == 401 || response.code == 403 -> ConnectionValidation.Failure(
                 "Check this API key or select another saved key.",
                 providerErrorMessage(response.body),
