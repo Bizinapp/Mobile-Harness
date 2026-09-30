@@ -57,6 +57,25 @@ internal fun findDebugApk(projectRoot: File): File? {
         .maxByOrNull(File::lastModified)
 }
 
+/** Returns the last debug APK only when every build input is older than it. */
+internal fun findReusableDebugApk(projectRoot: File): File? {
+    val apk = findDebugApk(projectRoot) ?: return null
+    val ignoredDirectories = setOf("build", ".gradle", ".idea", ".git")
+    val buildInputExtensions = setOf(
+        "kt", "java", "xml", "gradle", "kts", "properties", "toml", "pro", "json",
+    )
+    val changedAfterApk = projectRoot.walkTopDown()
+        .onEnter { directory -> directory == projectRoot || directory.name !in ignoredDirectories }
+        .filter { file ->
+            file.isFile && (
+                file.extension.lowercase() in buildInputExtensions ||
+                    file.name in setOf("gradlew", "gradlew.bat")
+                )
+        }
+        .any { it.lastModified() > apk.lastModified() }
+    return apk.takeUnless { changedAfterApk }
+}
+
 internal fun diagnoseAndroidBuildFailure(output: String, exitCode: Int): String {
     val text = output.lowercase()
     return when {

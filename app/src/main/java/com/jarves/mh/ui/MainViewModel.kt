@@ -65,6 +65,7 @@ import com.jarves.mh.runtime.androidGradleCommand
 import com.jarves.mh.runtime.diagnoseAndroidBuildFailure
 import com.jarves.mh.runtime.findAndroidProjectRoot
 import com.jarves.mh.runtime.findDebugApk
+import com.jarves.mh.runtime.findReusableDebugApk
 import com.jarves.mh.update.AppUpdateInfo
 import com.jarves.mh.update.AppUpdater
 import java.io.File
@@ -879,7 +880,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun buildAndRunAndroidApp() {
+        if (openReusableAndroidBuild()) return
         startAndroidGradleTask("assembleDebug", installAfterBuild = true)
+    }
+
+    private fun openReusableAndroidBuild(): Boolean {
+        val current = _state.value
+        val project = current.activeProject ?: return false
+        if (current.isRunning || current.projectTerminalRunning || current.androidBuildRunning) return false
+        val workspace = findAndroidProjectRoot(projectWorkspaceRoot(project)) ?: return false
+        val apk = findReusableDebugApk(workspace) ?: return false
+        val opened = AndroidAppInstaller.openIfAlreadyInstalled(getApplication(), apk)
+        if (!opened) AndroidAppInstaller.install(getApplication(), apk)
+        val now = System.currentTimeMillis()
+        val message = if (opened) {
+            "No changes — opened the installed app"
+        } else {
+            "No changes — using the existing APK"
+        }
+        _state.update {
+            it.copy(
+                androidBuildRunning = false,
+                androidBuildPhase = AndroidBuildPhase.SUCCEEDED,
+                androidBuildMessage = message,
+                androidBuildLog = "Gradle skipped: project files have not changed since the last successful build.\n",
+                androidBuildStartedAtMillis = now,
+                androidBuildFinishedAtMillis = now,
+                androidBuildApkPath = apk.absolutePath,
+                androidBuildApkSizeBytes = apk.length(),
+                toastMessage = message,
+            )
+        }
+        saveAndroidBuildRecord(project.id)
+        return true
     }
 
     fun cleanAndroidProject() {

@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.os.Build
 import android.widget.Toast
 
 class AndroidAppInstallReceiver : BroadcastReceiver() {
@@ -24,19 +23,11 @@ class AndroidAppInstallReceiver : BroadcastReceiver() {
             return
         }
         val packageName = intent.getStringExtra(PackageInstaller.EXTRA_PACKAGE_NAME) ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            runCatching {
-                context.packageManager.getLaunchIntentSenderForPackage(packageName).sendIntent(
-                    context, 0, null, null, null,
-                )
-            }.onFailure {
-                Toast.makeText(context, "Installed $packageName. Open it from your launcher.", Toast.LENGTH_LONG).show()
-            }
-            return
+        intent.getStringExtra(AndroidAppInstaller.EXTRA_APK_FINGERPRINT)?.let { fingerprint ->
+            AndroidAppInstaller.rememberInstalled(context, packageName, fingerprint)
         }
-        context.packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(launch)
+        if (!AndroidAppInstaller.launch(context, packageName)) {
+            Toast.makeText(context, "Installed $packageName. Open it from your launcher.", Toast.LENGTH_LONG).show()
         }
     }
 }

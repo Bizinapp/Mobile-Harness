@@ -10,9 +10,16 @@ import android.os.Build
 import android.os.Process
 import androidx.core.content.FileProvider
 import java.io.File
+import java.security.MessageDigest
 
 /** Installs a locally-built APK through Android's package manager, without ADB. */
 object AndroidAppInstaller {
+    fun openIfAlreadyInstalled(context: Context, apk: File): Boolean {
+        val packageName = archivePackageName(context, apk) ?: return false
+        if (installedFingerprint(context, packageName) != fingerprint(apk)) return false
+        return launch(context, packageName)
+    }
+
     fun install(context: Context, apk: File) {
         require(apk.isFile && apk.extension.equals("apk", ignoreCase = true) && apk.length() > 0L) {
             "A valid APK was not produced: ${apk.name}"
@@ -55,6 +62,7 @@ object AndroidAppInstaller {
                     .setPackage(context.packageName)
                     .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     .putExtra(PackageInstaller.EXTRA_SESSION_ID, sessionId)
+                    .putExtra(EXTRA_APK_FINGERPRINT, fingerprint(apk))
                 val mutabilityFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     PendingIntent.FLAG_MUTABLE
                 } else {
@@ -73,6 +81,48 @@ object AndroidAppInstaller {
     }
 
     const val ACTION_INSTALL_RESULT = "com.jarves.mh.action.APK_INSTALL_RESULT"
+    const val EXTRA_APK_FINGERPRINT = "com.jarves.mh.extra.APK_FINGERPRINT"
+
+    internal fun rememberInstalled(context: Context, packageName: String, fingerprint: String) {
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(packageName, fingerprint)
+            .apply()
+    }
+
+    internal fun launch(context: Context, packageName: String): Boolean = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getLaunchIntentSenderForPackage(packageName).sendIntent(
+                context, 0, null, null, null,
+            )
+        } else {
+            val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun archivePackageName(context: Context, apk: File): String? =
+        context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0)?.packageName
+
+    private fun installedFingerprint(context: Context, packageName: String): String? =
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getString(packageName, null)
+
+    private fun fingerprint(apk: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        apk.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private const val PREFERENCES = "installed_android_apks"
 
     private fun isMiuiDevice(): Boolean = android.os.Build.MANUFACTURER.lowercase() in
         setOf("xiaomi", "redmi", "poco")
