@@ -189,6 +189,8 @@ import com.jarves.mh.model.DiffLine
 import com.jarves.mh.model.DiffLineType
 import com.jarves.mh.model.Project
 import com.jarves.mh.model.ProjectKind
+import com.jarves.mh.model.ProjectType
+import com.jarves.mh.model.AndroidTemplate
 import com.jarves.mh.model.ProjectChat
 import com.jarves.mh.model.ProviderKind
 import com.jarves.mh.model.ProviderProfile
@@ -377,6 +379,9 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             onRemoveAttachment = viewModel::removePendingAttachment,
             onOpenAttachment = viewModel::openChatAttachment,
             onBuildAndRunAndroid = viewModel::buildAndRunAndroidApp,
+            onCancelAndroidBuild = viewModel::cancelAndroidBuild,
+            onCleanAndroid = viewModel::cleanAndroidProject,
+            onInstallAndroidTools = { viewModel.installDevStack(DevStack.ANDROID) },
         )
         else -> RootScreenHost(state, viewModel, projectsListState)
     }
@@ -2420,6 +2425,7 @@ private fun RootScreenHost(
                     listState = projectsListState,
                     onOpen = viewModel::openProject,
                     onCreate = viewModel::createProject,
+                    onCreateAndroid = viewModel::createAndroidProject,
                     onCreateQuickProject = viewModel::createQuickProject,
                     onImportZip = viewModel::importZipProject,
                     onCloneGit = viewModel::clonePublicGitRepository,
@@ -3443,6 +3449,7 @@ private fun ProjectsScreen(
     listState: LazyListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() },
     onOpen: (Project) -> Unit,
     onCreate: (String) -> Unit,
+    onCreateAndroid: (String, AndroidTemplate) -> Unit,
     onCreateQuickProject: () -> Unit,
     onImportZip: (Uri) -> Unit,
     onCloneGit: (String) -> Unit,
@@ -3466,6 +3473,7 @@ private fun ProjectsScreen(
     var gitUrl by rememberSaveable { mutableStateOf("") }
     var repositorySearch by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
+    var androidTemplate by rememberSaveable { mutableStateOf<AndroidTemplate?>(null) }
     val projects = state.projects
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -3709,6 +3717,7 @@ private fun ProjectsScreen(
                         project = project,
                         taskRunning = state.isRunning && state.activeProject?.id == project.id,
                         terminalRunning = state.projectTerminalRunning && state.activeProject?.id == project.id,
+                        buildRunning = state.androidBuildRunning && state.activeProject?.id == project.id,
                         onOpen = { onOpen(project) },
                         onRename = { onRenameProject(project.id, it) },
                         onDelete = { onDeleteProject(project.id) },
@@ -3719,10 +3728,35 @@ private fun ProjectsScreen(
     }
     if (showCreate) AlertDialog(
         onDismissRequest = { showCreate = false },
-        title = { Text("Create a starter project") },
+        title = { Text("Create a project") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Project name") }, singleLine = true)
+                Text("Project type", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AssistChip(
+                        onClick = { androidTemplate = null },
+                        label = { Text("General") },
+                        leadingIcon = { if (androidTemplate == null) Icon(Icons.Default.Check, null, Modifier.size(16.dp)) },
+                    )
+                    AssistChip(
+                        onClick = { androidTemplate = AndroidTemplate.COMPOSE },
+                        label = { Text("Compose") },
+                        leadingIcon = { if (androidTemplate == AndroidTemplate.COMPOSE) Icon(Icons.Default.Check, null, Modifier.size(16.dp)) },
+                    )
+                    AssistChip(
+                        onClick = { androidTemplate = AndroidTemplate.XML },
+                        label = { Text("XML") },
+                        leadingIcon = { if (androidTemplate == AndroidTemplate.XML) Icon(Icons.Default.Check, null, Modifier.size(16.dp)) },
+                    )
+                }
+                if (androidTemplate != null) {
+                    Text(
+                        "Kotlin · min SDK 28 · target SDK 36",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (name.isNotBlank()) {
                     Text(
                         "Terminal folder: /workspace/${projectSlug(name)}",
@@ -3733,7 +3767,17 @@ private fun ProjectsScreen(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onCreate(name); showCreate = false; name = "" }, enabled = name.isNotBlank()) { Text("Create") } },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    androidTemplate?.let { onCreateAndroid(name, it) } ?: onCreate(name)
+                    showCreate = false
+                    name = ""
+                    androidTemplate = null
+                },
+                enabled = name.isNotBlank(),
+            ) { Text("Create") }
+        },
         dismissButton = { TextButton(onClick = { showCreate = false }) { Text("Cancel") } },
     )
     if (showGitDialog) AlertDialog(
@@ -4019,6 +4063,7 @@ private fun ProjectCard(
     project: Project,
     taskRunning: Boolean,
     terminalRunning: Boolean,
+    buildRunning: Boolean,
     onOpen: () -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
@@ -4030,7 +4075,12 @@ private fun ProjectCard(
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                Icon(Icons.Default.Folder, null, Modifier.padding(13.dp), tint = PocketOrange)
+                Icon(
+                    if (project.type == ProjectType.ANDROID) Icons.Default.Android else Icons.Default.Folder,
+                    null,
+                    Modifier.padding(13.dp),
+                    tint = if (project.type == ProjectType.ANDROID) PocketGreen else PocketOrange,
+                )
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
@@ -4042,12 +4092,16 @@ private fun ProjectCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (taskRunning || terminalRunning) {
+                    if (taskRunning || terminalRunning || buildRunning) {
                         Spacer(Modifier.width(8.dp))
                         CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            if (taskRunning) "Task running" else "Terminal running",
+                            when {
+                                taskRunning -> "Task running"
+                                buildRunning -> "Android build"
+                                else -> "Terminal running"
+                            },
                             color = MaterialTheme.colorScheme.primary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -4217,6 +4271,9 @@ private fun WorkspaceScreen(
     onRemoveAttachment: (String) -> Unit,
     onOpenAttachment: (ChatAttachment) -> Unit,
     onBuildAndRunAndroid: () -> Unit,
+    onCancelAndroidBuild: () -> Unit,
+    onCleanAndroid: () -> Unit,
+    onInstallAndroidTools: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -4282,7 +4339,107 @@ private fun WorkspaceScreen(
 
     var selectedTab by rememberSaveable { mutableStateOf(WorkspaceTab.CHAT) }
     var showChats by rememberSaveable { mutableStateOf(false) }
+    var showAndroidBuild by rememberSaveable { mutableStateOf(false) }
     val activeChat = state.projectChats.firstOrNull { it.id == state.activeChatId }
+
+    if (showAndroidBuild) {
+        val clipboard = LocalClipboardManager.current
+        ModalBottomSheet(onDismissRequest = { showAndroidBuild = false }) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Android, null, tint = PocketGreen)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Android build", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            state.androidBuildMessage ?: "Ready to build a debug APK",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    if (state.androidBuildRunning) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+                if (DevStack.ANDROID !in state.installedDevStacks) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                state.devStackMessage ?: "Android tools are required before this project can build.",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 12.sp,
+                            )
+                            if (state.devStackInstalling == DevStack.ANDROID) {
+                                LinearProgressIndicator(
+                                    progress = { state.devStackProgress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else {
+                                Button(onClick = onInstallAndroidTools) { Text("Install Android tools") }
+                            }
+                        }
+                    }
+                }
+                if (state.androidBuildLog.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Build output", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(state.androidBuildLog)) }) {
+                            Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Copy log")
+                        }
+                    }
+                    val logScroll = rememberScrollState()
+                    LaunchedEffect(state.androidBuildLog.length) { logScroll.scrollTo(logScroll.maxValue) }
+                    Surface(color = Color(0xFF11141A), shape = RoundedCornerShape(12.dp)) {
+                        SelectionContainer {
+                            Text(
+                                state.androidBuildLog,
+                                Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 320.dp).verticalScroll(logScroll).padding(12.dp),
+                                color = Color(0xFFD7DEE9),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.5.sp,
+                                lineHeight = 15.sp,
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (state.androidBuildRunning) {
+                        OutlinedButton(onClick = onCancelAndroidBuild, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Stop, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Cancel build")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onCleanAndroid,
+                            enabled = DevStack.ANDROID in state.installedDevStacks,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Clean") }
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                                    unknownAppsLauncher.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
+                                } else onBuildAndRunAndroid()
+                            },
+                            enabled = DevStack.ANDROID in state.installedDevStacks,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (state.androidBuildPhase == com.jarves.mh.runtime.AndroidBuildPhase.FAILED) "Retry" else "Build & run")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
 
     // If a file is open, show the FileViewerScreen on top
     if (state.openedFilePath != null) {
@@ -4371,20 +4528,8 @@ private fun WorkspaceScreen(
                 actions = {
                     if (isAndroidProject) {
                         IconButton(
-                            onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                                    !context.packageManager.canRequestPackageInstalls()) {
-                                    unknownAppsLauncher.launch(
-                                        Intent(
-                                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                            Uri.parse("package:${context.packageName}"),
-                                        ),
-                                    )
-                                } else {
-                                    onBuildAndRunAndroid()
-                                }
-                            },
-                            enabled = !state.androidBuildRunning && !state.isRunning && !state.projectTerminalRunning,
+                            onClick = { showAndroidBuild = true },
+                            enabled = !state.isRunning && !state.projectTerminalRunning,
                         ) {
                             if (state.androidBuildRunning) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             else Icon(Icons.Default.PlayArrow, "Build and run Android app")

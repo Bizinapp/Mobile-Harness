@@ -163,6 +163,13 @@ data class ProviderProfile(
 
 enum class ProjectKind { PROJECT, QUICK_PROJECT }
 
+enum class ProjectType { GENERAL, ANDROID }
+
+enum class AndroidTemplate(val label: String) {
+    COMPOSE("Jetpack Compose"),
+    XML("Kotlin + XML"),
+}
+
 data class Project(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -172,6 +179,8 @@ data class Project(
     val rootPath: String = "",
     val updatedAtMillis: Long = System.currentTimeMillis(),
     val kind: ProjectKind = ProjectKind.PROJECT,
+    val type: ProjectType = ProjectType.GENERAL,
+    val androidTemplate: AndroidTemplate? = null,
 ) {
     val formattedUpdatedAt: String
         get() {

@@ -71,9 +71,11 @@ class RuntimeExecutionService : Service() {
             }
             else -> {
                 taskRunning = true
+                val detail = intent?.getStringExtra(EXTRA_DETAIL)?.takeIf(String::isNotBlank)
+                    ?: "Working in $projectName"
                 startForeground(
                     RUNNING_NOTIFICATION_ID,
-                    runningNotification("Claude Code is working in $projectName", includeStop = canStop),
+                    runningNotification(detail, includeStop = canStop),
                 )
                 acquireWakeLock()
             }
