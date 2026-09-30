@@ -148,9 +148,11 @@ data class AppUiState(
     val showDetailedSetupProgress: Boolean = false,
     val onboardingComplete: Boolean = false,
     val backgroundSetupComplete: Boolean = false,
+    val initialLanguageSelected: Boolean = false,
     val provider: ProviderProfile = ProviderProfile(ProviderKind.ANTHROPIC),
     val activeApiKeyName: String? = null,
     val themeMode: com.jarves.mh.ui.theme.AppThemeMode = com.jarves.mh.ui.theme.AppThemeMode.DARK,
+    val languageCode: String = "system",
     val apiPingStatus: ApiPingStatus = ApiPingStatus.IDLE,
     val apiPingMessage: String? = null,
     val projects: List<Project> = emptyList(),
@@ -298,6 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         AppUiState(
             onboardingComplete = preferences.onboardingComplete,
             backgroundSetupComplete = preferences.backgroundSetupComplete,
+            initialLanguageSelected = preferences.initialLanguageSelected,
             agentKind = initialAgentKind,
             primaryAgentKind = initialPrimaryAgentKind,
             provider = preferences.loadProvider(vault, initialAgentKind),
@@ -312,6 +315,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             antigravityEffort = preferences.antigravityEffort,
             themeMode = runCatching { com.jarves.mh.ui.theme.AppThemeMode.valueOf(preferences.themeMode.uppercase()) }
                 .getOrDefault(com.jarves.mh.ui.theme.AppThemeMode.DARK),
+            languageCode = preferences.languageCode,
             projects = preferences.loadProjects(),
             githubAuthStatus = GitHubAuthStatus.DISCONNECTED,
             githubLogin = preferences.githubLogin.takeIf(String::isNotBlank),
@@ -936,6 +940,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setThemeMode(mode: com.jarves.mh.ui.theme.AppThemeMode) {
         preferences.themeMode = mode.name.lowercase()
         _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun setLanguage(code: String) {
+        preferences.languageCode = code
+        _state.update { it.copy(languageCode = code) }
+    }
+
+    fun finishInitialLanguageSetup() {
+        preferences.initialLanguageSelected = true
+        _state.update { it.copy(initialLanguageSelected = true) }
+    }
+
+    fun reopenInitialLanguageSetup() {
+        preferences.initialLanguageSelected = false
+        _state.update { it.copy(initialLanguageSelected = false) }
     }
 
     fun getSavedApiKey(kind: ProviderKind): String = vault.get(kind.name).orEmpty()

@@ -54,9 +54,11 @@ fun buildConfigString(value: String): String =
 android {
     namespace = "com.jarves.mh"
     compileSdk = 36
-    // F-Droid's r26b recipe installs 26.1.10909125. Keep AGP from selecting
-    // its newer default NDK; local developers may override this explicitly.
-    ndkVersion = providers.gradleProperty("mhNdkVersion").orNull ?: "26.1.10909125"
+    // NDK 28 emits flexible-page-size binaries for the static PRoot loader.
+    // NDK 26 accepted the max-page-size flag but still produced 4 KiB LOAD
+    // segments, which crash under 16 KiB Android runtimes. Builders may still
+    // override this explicitly with -PmhNdkVersion=<version>.
+    ndkVersion = providers.gradleProperty("mhNdkVersion").orNull ?: "28.2.13676358"
 
     signingConfigs {
         if (hasUploadSigning) {

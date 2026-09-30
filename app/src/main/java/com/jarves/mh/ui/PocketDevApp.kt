@@ -221,22 +221,26 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import com.jarves.mh.R
+import com.jarves.mh.ui.theme.AppLanguage
 import com.jarves.mh.ui.theme.AppThemeMode
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExtendedFloatingActionButton
 
-private enum class RootScreen(val label: String, val icon: ImageVector) {
-    PROJECTS("Projects", Icons.Default.Folder),
-    AGENT("Agent", Icons.Default.SmartToy),
-    SETTINGS("Settings", Icons.Default.Settings),
+private enum class RootScreen(@StringRes val labelRes: Int, val icon: ImageVector) {
+    PROJECTS(R.string.tab_projects, Icons.Default.Folder),
+    AGENT(R.string.tab_agent, Icons.Default.SmartToy),
+    SETTINGS(R.string.tab_settings, Icons.Default.Settings),
 }
-private enum class WorkspaceTab(val label: String, val icon: ImageVector) {
-    CHAT("Chat", Icons.Default.AutoAwesome),
-    FILES("Files", Icons.Default.Folder),
-    TERMINAL("Terminal", Icons.Default.Terminal),
-    CHANGES("Changes", Icons.Default.Code),
-    PREVIEW("Preview", Icons.Default.Preview),
+private enum class WorkspaceTab(@StringRes val labelRes: Int, val icon: ImageVector) {
+    CHAT(R.string.tab_chat, Icons.Default.AutoAwesome),
+    FILES(R.string.tab_files, Icons.Default.Folder),
+    TERMINAL(R.string.tab_terminal, Icons.Default.Terminal),
+    CHANGES(R.string.tab_changes, Icons.Default.Code),
+    PREVIEW(R.string.tab_preview, Icons.Default.Preview),
 }
 
 @Composable
@@ -256,8 +260,18 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             themeMode = state.themeMode,
             onToggleTheme = viewModel::toggleTheme,
         )
+        !state.initialLanguageSelected && (state.startupStage == StartupStage.SETUP_REQUIRED || !state.onboardingComplete) ->
+            InitialLanguageSetupScreen(
+                currentLanguageCode = state.languageCode,
+                themeMode = state.themeMode,
+                onToggleTheme = viewModel::toggleTheme,
+                onSelectLanguage = viewModel::setLanguage,
+                onContinue = viewModel::finishInitialLanguageSetup,
+            )
         !state.backgroundSetupComplete && state.startupStage == StartupStage.SETUP_REQUIRED ->
             BackgroundTaskSetupScreen(
+                currentLanguageCode = state.languageCode,
+                onSetLanguage = viewModel::setLanguage,
                 themeMode = state.themeMode,
                 onToggleTheme = viewModel::toggleTheme,
                 onContinue = viewModel::finishBackgroundSetup,
@@ -266,6 +280,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             selectedStacks = state.selectedDevStacks,
             selectedAgent = state.agentKind,
             themeMode = state.themeMode,
+            currentLanguageCode = state.languageCode,
+            onSetLanguage = viewModel::setLanguage,
             onToggleTheme = viewModel::toggleTheme,
             onToggleStack = viewModel::toggleDevStack,
             onSelectAgent = viewModel::selectAgent,
@@ -294,6 +310,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
         state.startupStage == StartupStage.MODEL_SETUP && state.agentKind == AgentKind.ANTIGRAVITY ->
             AntigravityOnboardingScreen(
                 state = state,
+                currentLanguageCode = state.languageCode,
+                onSetLanguage = viewModel::setLanguage,
                 onStartLogin = viewModel::startAntigravityLogin,
                 onSubmitCode = viewModel::submitAntigravityCode,
                 onContinue = viewModel::finishAntigravityOnboarding,
@@ -305,6 +323,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             onboarding = true,
             agentKind = state.agentKind,
             initialStep = 1,
+            currentLanguageCode = state.languageCode,
+            onSetLanguage = viewModel::setLanguage,
             onSave = viewModel::finishOnboarding,
             onDiscover = viewModel::discoverModels,
             onValidate = viewModel::validateProvider,
@@ -314,6 +334,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
         )
         state.startupStage == StartupStage.READY && !state.backgroundSetupComplete ->
             BackgroundTaskSetupScreen(
+                currentLanguageCode = state.languageCode,
+                onSetLanguage = viewModel::setLanguage,
                 themeMode = state.themeMode,
                 onToggleTheme = viewModel::toggleTheme,
                 onContinue = viewModel::finishBackgroundSetup,
@@ -364,6 +386,8 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun AntigravityOnboardingScreen(
     state: AppUiState,
+    currentLanguageCode: String,
+    onSetLanguage: (String) -> Unit,
     onStartLogin: () -> Unit,
     onSubmitCode: (String) -> Unit,
     onContinue: () -> Unit,
@@ -387,7 +411,10 @@ private fun AntigravityOnboardingScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Set up Antigravity") },
-                actions = { IconButton(onClick = onToggleTheme) { Icon(Icons.Default.DarkMode, "Toggle theme") } },
+                actions = {
+                    LanguagePickerAction(currentLanguageCode, onSetLanguage)
+                    IconButton(onClick = onToggleTheme) { Icon(Icons.Default.DarkMode, stringResource(R.string.theme_toggle)) }
+                },
             )
         },
     ) { padding ->
@@ -474,7 +501,238 @@ private fun AntigravityOnboardingScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun InitialLanguageSetupScreen(
+    currentLanguageCode: String,
+    themeMode: AppThemeMode = AppThemeMode.DARK,
+    onToggleTheme: () -> Unit = {},
+    onSelectLanguage: (String) -> Unit,
+    onContinue: () -> Unit,
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BrandMark(compact = true)
+                        Spacer(Modifier.width(9.dp))
+                        Text("Mobile Harness", fontWeight = FontWeight.Bold)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onToggleTheme) {
+                        Icon(
+                            if (themeMode == AppThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            contentDescription = "Toggle theme",
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Language,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(
+                        stringResource(R.string.language_welcome_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.language_welcome_subtitle),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            )
+            Spacer(Modifier.height(20.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column {
+                    AppLanguage.entries.forEachIndexed { index, lang ->
+                        val isSelected = (currentLanguageCode == lang.code) ||
+                            (currentLanguageCode.isBlank() && lang == AppLanguage.SYSTEM)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectLanguage(lang.code) }
+                                .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (lang == AppLanguage.SYSTEM) {
+                                        stringResource(R.string.language_system_default)
+                                    } else {
+                                        lang.nativeName
+                                    },
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 15.sp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                )
+                                if (lang != AppLanguage.SYSTEM) {
+                                    Text(
+                                        text = lang.displayName,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                        if (index != AppLanguage.entries.lastIndex) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onContinue,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Text(
+                    stringResource(R.string.action_continue),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                )
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun LanguagePickerAction(
+    currentLanguageCode: String,
+    onSelectLanguage: (String) -> Unit,
+) {
+    var showLanguageDialog by rememberSaveable { mutableStateOf(false) }
+    IconButton(onClick = { showLanguageDialog = true }) {
+        Icon(
+            Icons.Default.Language,
+            contentDescription = stringResource(R.string.language_choose_title),
+        )
+    }
+    if (showLanguageDialog) {
+        LanguagePickerDialog(
+            currentLanguageCode = currentLanguageCode,
+            onSelectLanguage = {
+                onSelectLanguage(it)
+                showLanguageDialog = false
+            },
+            onDismiss = { showLanguageDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun LanguagePickerDialog(
+    currentLanguageCode: String,
+    onSelectLanguage: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Language, contentDescription = null) },
+        title = { Text(stringResource(R.string.language_choose_title)) },
+        text = {
+            Column {
+                AppLanguage.entries.forEach { language ->
+                    val selected = AppLanguage.fromCode(currentLanguageCode) == language
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelectLanguage(language.code) }
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                else Color.Transparent,
+                                RoundedCornerShape(10.dp),
+                            )
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (language == AppLanguage.SYSTEM) stringResource(R.string.language_system_default)
+                            else language.nativeName,
+                            modifier = Modifier.weight(1f),
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (selected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(19.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun BackgroundTaskSetupScreen(
+    currentLanguageCode: String = "system",
+    onSetLanguage: (String) -> Unit = {},
     themeMode: AppThemeMode = AppThemeMode.DARK,
     onToggleTheme: () -> Unit = {},
     onContinue: () -> Unit,
@@ -522,19 +780,19 @@ private fun BackgroundTaskSetupScreen(
         else -> Icons.Default.Shield
     }
     val currentTitle = when (currentStep) {
-        0 -> "Task notifications"
-        1 -> "Background reliability"
-        else -> "Task protection"
+        0 -> stringResource(R.string.bg_notifications_title)
+        1 -> stringResource(R.string.bg_reliability_title)
+        else -> stringResource(R.string.bg_protection_title)
     }
     val currentDescription = when (currentStep) {
-        0 -> "See live progress and receive an alert when Claude finishes or needs your attention."
-        1 -> "Allow Mobile Harness to continue a task when you lock the phone or switch to another app."
-        else -> "Keep the CPU awake only while a visible coding task is running, then release it automatically."
+        0 -> stringResource(R.string.bg_notifications_desc)
+        1 -> stringResource(R.string.bg_reliability_desc)
+        else -> stringResource(R.string.bg_protection_desc)
     }
     val currentPrivacyNote = when (currentStep) {
-        0 -> "Only task progress, completion, and error notifications are sent."
-        1 -> "You remain in control and can stop every task from its notification."
-        else -> "The screen stays off. Protection is capped at 90 minutes and stops with the task."
+        0 -> stringResource(R.string.bg_notifications_privacy)
+        1 -> stringResource(R.string.bg_reliability_privacy)
+        else -> stringResource(R.string.bg_protection_privacy)
     }
     val currentGranted = when (currentStep) {
         0 -> notificationGranted
@@ -554,6 +812,7 @@ private fun BackgroundTaskSetupScreen(
                     }
                 },
                 actions = {
+                    LanguagePickerAction(currentLanguageCode, onSetLanguage)
                     IconButton(onClick = onToggleTheme) {
                         Icon(
                             if (themeMode == AppThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
@@ -573,10 +832,10 @@ private fun BackgroundTaskSetupScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             Spacer(Modifier.height(8.dp))
-            Text("Prepare for reliable setup", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.bg_setup_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             Text(
-                "Setup time depends on the toolchains you choose next. You may leave Mobile Harness in the background while it works.",
+                stringResource(R.string.bg_setup_subtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
@@ -592,11 +851,11 @@ private fun BackgroundTaskSetupScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
                 Column {
-                    PermissionSummaryRow(Icons.Default.Notifications, "Notifications", notificationGranted, currentStep == 0)
+                    PermissionSummaryRow(Icons.Default.Notifications, stringResource(R.string.bg_step_notifications), notificationGranted, currentStep == 0)
                     HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    PermissionSummaryRow(Icons.Default.BatterySaver, "Background", batteryGranted, currentStep == 1)
+                    PermissionSummaryRow(Icons.Default.BatterySaver, stringResource(R.string.bg_step_background), batteryGranted, currentStep == 1)
                     HorizontalDivider(modifier = Modifier.padding(start = 58.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    PermissionSummaryRow(Icons.Default.Shield, "Task protection", taskProtectionConfirmed, currentStep == 2)
+                    PermissionSummaryRow(Icons.Default.Shield, stringResource(R.string.bg_step_task_protection), taskProtectionConfirmed, currentStep == 2)
                 }
             }
 
@@ -617,10 +876,10 @@ private fun BackgroundTaskSetupScreen(
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("STEP ${currentStep + 1} OF 3", color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                            Text(stringResource(R.string.bg_step_indicator, currentStep + 1, 3), color = MaterialTheme.colorScheme.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
                             Text(currentTitle, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         }
-                        if (currentGranted) Icon(Icons.Default.Check, "Granted", tint = PocketGreen)
+                        if (currentGranted) Icon(Icons.Default.Check, stringResource(R.string.bg_status_granted), tint = PocketGreen)
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(currentDescription, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
@@ -679,9 +938,9 @@ private fun BackgroundTaskSetupScreen(
                     ) {
                         Text(
                             when (currentStep) {
-                                0 -> if (notificationGranted) "Next" else if (notificationDenied) "Open notification settings" else "Allow notifications"
-                                1 -> if (batteryGranted) "Next" else "Open battery settings"
-                                else -> "Enable and finish"
+                                0 -> if (notificationGranted) stringResource(R.string.action_next) else if (notificationDenied) stringResource(R.string.bg_notifications_settings) else stringResource(R.string.bg_notifications_allow)
+                                1 -> if (batteryGranted) stringResource(R.string.action_next) else stringResource(R.string.bg_reliability_settings)
+                                else -> stringResource(R.string.bg_protection_enable)
                             },
                             fontWeight = FontWeight.Bold,
                         )
@@ -693,7 +952,7 @@ private fun BackgroundTaskSetupScreen(
                             onClick = { currentStep += 1 },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (currentStep == 0) "Continue without notifications" else "Continue without battery exemption")
+                            Text(if (currentStep == 0) stringResource(R.string.bg_notifications_skip) else stringResource(R.string.bg_reliability_skip))
                         }
                     }
                 }
@@ -701,7 +960,7 @@ private fun BackgroundTaskSetupScreen(
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "You can change these settings later. Android may still stop exceptionally heavy work when the device is low on memory.",
+                stringResource(R.string.bg_setup_footer),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.5.sp,
                 lineHeight = 15.sp,
@@ -742,9 +1001,9 @@ private fun PermissionSummaryRow(
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
         )
         when {
-            complete -> Icon(Icons.Default.Check, "Complete", tint = PocketGreen, modifier = Modifier.size(18.dp))
-            active -> Text("Required", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            else -> Text("Next", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+            complete -> Icon(Icons.Default.Check, stringResource(R.string.bg_status_granted), tint = PocketGreen, modifier = Modifier.size(18.dp))
+            active -> Text(stringResource(R.string.bg_status_required), color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            else -> Text(stringResource(R.string.bg_status_next), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
         }
     }
 }
@@ -789,6 +1048,8 @@ private fun RuntimeSetupPromptScreen(
     selectedStacks: Set<DevStack>,
     selectedAgent: AgentKind = AgentKind.CLAUDE_CODE,
     themeMode: AppThemeMode = AppThemeMode.DARK,
+    currentLanguageCode: String = "system",
+    onSetLanguage: (String) -> Unit = {},
     onToggleTheme: () -> Unit = {},
     onToggleStack: (DevStack) -> Unit,
     onSelectAgent: (AgentKind) -> Unit = {},
@@ -834,6 +1095,7 @@ private fun RuntimeSetupPromptScreen(
                     }
                 },
                 actions = {
+                    LanguagePickerAction(currentLanguageCode, onSetLanguage)
                     IconButton(onClick = onToggleTheme) {
                         Icon(
                             if (themeMode == AppThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
@@ -857,7 +1119,7 @@ private fun RuntimeSetupPromptScreen(
             if (currentStep == 0) {
                 // Step 0: Device Compatibility & Verification
                 Text(
-                    text = "DEVICE CHECK",
+                    text = stringResource(R.string.runtime_setup_device_check_badge),
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -865,14 +1127,14 @@ private fun RuntimeSetupPromptScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Ready to build on this phone",
+                    text = stringResource(R.string.runtime_setup_device_ready_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Your phone meets the requirements. Choose your coding tools next and Mobile Harness will handle the setup.",
+                    text = stringResource(R.string.runtime_setup_device_ready_desc),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.5.sp,
                     lineHeight = 19.sp,
@@ -903,13 +1165,13 @@ private fun RuntimeSetupPromptScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        "System compatibility",
+                                        stringResource(R.string.runtime_setup_sys_compat),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
-                                        if (compatible) "Your device is ready" else "This device is unsupported",
+                                        if (compatible) stringResource(R.string.runtime_setup_device_ready) else stringResource(R.string.runtime_setup_device_unsupported),
                                         fontSize = 10.5.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -921,7 +1183,7 @@ private fun RuntimeSetupPromptScreen(
                                 border = BorderStroke(0.5.dp, if (compatible) PocketGreen.copy(alpha = 0.35f) else MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
                             ) {
                                 Text(
-                                    text = if (compatible) "Ready" else "Unsupported",
+                                    text = if (compatible) stringResource(R.string.runtime_setup_status_ready) else stringResource(R.string.runtime_setup_status_unsupported),
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -934,26 +1196,26 @@ private fun RuntimeSetupPromptScreen(
 
                         SpecRow(
                             icon = Icons.Default.Memory,
-                            label = "Memory (RAM)",
-                            value = "$totalRamLabel GB usable",
+                            label = stringResource(R.string.runtime_setup_memory_ram),
+                            value = stringResource(R.string.runtime_setup_ram_usable, totalRamLabel),
                             statusOk = true,
                         )
 
                         SpecRow(
                             icon = Icons.Default.Code,
-                            label = "Processor",
+                            label = stringResource(R.string.runtime_setup_processor),
                             value = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a",
                             statusOk = arm64,
                         )
 
                         SpecRow(
                             icon = Icons.Default.Storage,
-                            label = "Required download",
-                            value = "149–774 MB",
+                            label = stringResource(R.string.runtime_setup_download_req),
+                            value = stringResource(R.string.runtime_setup_download_range),
                             statusOk = true,
                         )
                         Text(
-                            "Based on the tools you select",
+                            stringResource(R.string.runtime_setup_download_based_on_tools),
                             modifier = Modifier.padding(start = 26.dp),
                             fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -982,7 +1244,7 @@ private fun RuntimeSetupPromptScreen(
                         horizontalArrangement = Arrangement.Center,
                     ) {
                         Text(
-                            text = if (compatible) "Continue to tool setup" else "Device not supported",
+                            text = if (compatible) stringResource(R.string.runtime_setup_continue_to_tools) else stringResource(R.string.runtime_setup_device_not_supported),
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                         )
@@ -996,7 +1258,7 @@ private fun RuntimeSetupPromptScreen(
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "You can change tools later",
+                    stringResource(R.string.runtime_setup_change_tools_later),
                     modifier = Modifier.fillMaxWidth(),
                     textAlign = TextAlign.Center,
                     fontSize = 11.sp,
@@ -1004,7 +1266,7 @@ private fun RuntimeSetupPromptScreen(
                 )
             } else {
                 Text(
-                    "TOOLCHAIN SETUP",
+                    stringResource(R.string.runtime_setup_toolchain_badge),
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -1012,14 +1274,14 @@ private fun RuntimeSetupPromptScreen(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Choose your tools",
+                    text = stringResource(R.string.runtime_setup_choose_tools_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "Start lightweight. You can install more toolchains later from Settings.",
+                    text = stringResource(R.string.runtime_setup_choose_tools_desc),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -1045,7 +1307,7 @@ private fun RuntimeSetupPromptScreen(
                         Spacer(Modifier.width(11.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                if (BuildConfig.OFFLINE_RUNTIME_BUNDLES) "Core runtime · 68.8 MB" else "Core runtime · 68.8 MB download",
+                                if (BuildConfig.OFFLINE_RUNTIME_BUNDLES) stringResource(R.string.runtime_setup_core_runtime) else stringResource(R.string.runtime_setup_core_runtime_download),
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp,
@@ -1057,7 +1319,7 @@ private fun RuntimeSetupPromptScreen(
                 }
 
                 Spacer(Modifier.height(18.dp))
-                Text("CODING AGENT", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
+                Text(stringResource(R.string.runtime_setup_coding_agent_badge), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
                 Spacer(Modifier.height(8.dp))
 
                 Surface(
@@ -1070,6 +1332,9 @@ private fun RuntimeSetupPromptScreen(
                         AgentKind.entries.forEachIndexed { index, agent ->
                             AgentChoiceRow(
                                 agent = agent,
+                                title = stringResource(agentTitleResource(agent)),
+                                subtitle = stringResource(agentSubtitleResource(agent)),
+                                recommendedLabel = stringResource(R.string.agent_recommended),
                                 selected = selectedAgent == agent,
                                 onClick = { onSelectAgent(agent) },
                             )
@@ -1083,14 +1348,14 @@ private fun RuntimeSetupPromptScreen(
                     }
                 }
                 Text(
-                    "Only the selected optional agent is downloaded. You can install or switch agents later from Settings.",
+                    stringResource(R.string.runtime_setup_coding_agent_note),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp),
                 )
 
                 Spacer(Modifier.height(18.dp))
-                Text("OPTIONAL TOOLCHAINS", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
+                Text(stringResource(R.string.runtime_setup_optional_toolchains_badge), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
                 Spacer(Modifier.height(8.dp))
 
                 Surface(
@@ -1151,7 +1416,7 @@ private fun RuntimeSetupPromptScreen(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = if (compatible) "Install Mobile Harness" else "Device not supported",
+                            text = if (compatible) stringResource(R.string.runtime_setup_install_btn) else stringResource(R.string.runtime_setup_device_not_supported),
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                         )
@@ -1175,6 +1440,7 @@ private const val AGY_RUNTIME_DOWNLOAD_MB = 40
 private const val PYTHON_RUNTIME_DOWNLOAD_MB = 55
 private const val ANDROID_RUNTIME_DOWNLOAD_MB = 570
 
+@Composable
 private fun setupTimeEstimate(selected: Set<DevStack>): String {
     var minimumMinutes = 3
     var maximumMinutes = 5
@@ -1194,7 +1460,7 @@ private fun setupTimeEstimate(selected: Set<DevStack>): String {
         minimumMinutes += 2
         maximumMinutes += 4
     }
-    return "$minimumMinutes–$maximumMinutes minutes"
+    return stringResource(R.string.setup_time_minutes, minimumMinutes, maximumMinutes)
 }
 
 private fun stackDownloadLabel(stack: DevStack): String = when {
@@ -1287,9 +1553,26 @@ private fun DevStackChoiceRow(
     }
 }
 
+@StringRes
+private fun agentTitleResource(agent: AgentKind): Int = when (agent) {
+    AgentKind.CLAUDE_CODE -> R.string.agent_title_claude
+    AgentKind.DEEPSEEK_HARNESS -> R.string.agent_title_deepseek
+    AgentKind.ANTIGRAVITY -> R.string.agent_title_antigravity
+}
+
+@StringRes
+private fun agentSubtitleResource(agent: AgentKind): Int = when (agent) {
+    AgentKind.CLAUDE_CODE -> R.string.agent_subtitle_claude
+    AgentKind.DEEPSEEK_HARNESS -> R.string.agent_subtitle_deepseek
+    AgentKind.ANTIGRAVITY -> R.string.agent_subtitle_antigravity
+}
+
 @Composable
 private fun AgentChoiceRow(
     agent: AgentKind,
+    title: String,
+    subtitle: String,
+    recommendedLabel: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -1324,7 +1607,7 @@ private fun AgentChoiceRow(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    agent.title,
+                    title,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
@@ -1336,7 +1619,7 @@ private fun AgentChoiceRow(
                         shape = RoundedCornerShape(50),
                     ) {
                         Text(
-                            "Recommended",
+                            recommendedLabel,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                             color = PocketOrange,
                             fontSize = 9.sp,
@@ -1348,7 +1631,7 @@ private fun AgentChoiceRow(
                 }
             }
             Spacer(Modifier.height(1.dp))
-            Text(agent.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(1.dp))
             Text(agent.downloadNote, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -1375,6 +1658,16 @@ private fun AgentSwitchSheet(
     onSelect: (AgentKind) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Resolve text before entering ModalBottomSheet. Dialog windows can expose
+    // the activity's base resources instead of our dynamically localized context.
+    val localizedContext = LocalContext.current
+    val sheetTitle = localizedContext.getString(R.string.agent_choose_title)
+    val sheetDescription = localizedContext.getString(R.string.agent_choose_desc)
+    val recommendedLabel = localizedContext.getString(R.string.agent_recommended)
+    val agentLabels = AgentKind.entries.associateWith { agent ->
+        localizedContext.getString(agentTitleResource(agent)) to
+            localizedContext.getString(agentSubtitleResource(agent))
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -1382,13 +1675,13 @@ private fun AgentSwitchSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             Text(
-                "Choose coding agent",
+                sheetTitle,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Switch if the current service is unavailable. Your existing login and credentials stay saved.",
+                sheetDescription,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
             )
@@ -1401,8 +1694,12 @@ private fun AgentSwitchSheet(
             ) {
                 Column {
                     AgentKind.entries.forEachIndexed { index, agent ->
+                        val labels = agentLabels.getValue(agent)
                         AgentChoiceRow(
                             agent = agent,
+                            title = labels.first,
+                            subtitle = labels.second,
+                            recommendedLabel = recommendedLabel,
                             selected = agent == selected,
                             onClick = { onSelect(agent) },
                         )
@@ -1454,6 +1751,57 @@ private fun SpecRow(
 }
 
 @Composable
+private fun localizeRuntimeMessage(message: String): String {
+    val trimmed = message.trim().removePrefix("• ").removePrefix("- ").removePrefix("$ ").trim()
+    return when {
+        trimmed.startsWith("Downloading ") && trimmed.endsWith(" bundle") -> {
+            val name = trimmed.removePrefix("Downloading ").removeSuffix(" bundle")
+            stringResource(R.string.runtime_msg_downloading_bundle, name)
+        }
+        trimmed.startsWith("Loading ") && trimmed.endsWith(" bundle") -> {
+            val name = trimmed.removePrefix("Loading ").removeSuffix(" bundle")
+            stringResource(R.string.runtime_msg_loading_bundle, name)
+        }
+        trimmed.equals("Preparing the private development runtime", ignoreCase = true) ||
+            trimmed.contains("Preparing the private development runtime", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_preparing_runtime)
+        }
+        trimmed.startsWith("Verifying and unpacking the ") -> {
+            val name = trimmed.removePrefix("Verifying and unpacking the ").removeSuffix(" runtime")
+            stringResource(R.string.runtime_msg_verifying_unpacking, name)
+        }
+        trimmed.endsWith(" tools installed") -> {
+            val name = trimmed.removeSuffix(" tools installed")
+            stringResource(R.string.runtime_msg_tools_installed, name)
+        }
+        trimmed.equals("Checking private runtime files", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_checking_files)
+        }
+        trimmed.equals("Preparing the Android runtime bridge", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_preparing_bridge)
+        }
+        trimmed.equals("Private runtime is ready", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_runtime_ready)
+        }
+        trimmed.equals("Setup complete", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_setup_complete)
+        }
+        trimmed.contains("Resuming Mobile Harness setup", ignoreCase = true) -> {
+            stringResource(R.string.runtime_msg_resuming_setup)
+        }
+        trimmed.startsWith("Downloading ") && !trimmed.startsWith("Downloading: ") -> {
+            val rest = trimmed.removePrefix("Downloading ")
+            stringResource(R.string.runtime_msg_downloading_generic, rest)
+        }
+        trimmed.startsWith("Installing ") -> {
+            val rest = trimmed.removePrefix("Installing ")
+            stringResource(R.string.runtime_msg_installing_generic, rest)
+        }
+        else -> message
+    }
+}
+
+@Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun RuntimeInstallationScreen(
     state: AppUiState,
@@ -1474,7 +1822,7 @@ private fun RuntimeInstallationScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BrandMark(compact = true)
                         Spacer(Modifier.width(9.dp))
-                        Text("Set up Mobile Harness", fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.setup_mobile_harness), fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
@@ -1497,7 +1845,7 @@ private fun RuntimeInstallationScreen(
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "STEP 1 OF 3",
+                    stringResource(R.string.bg_step_indicator, 1, 3),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     color = PocketOrange,
@@ -1514,20 +1862,20 @@ private fun RuntimeInstallationScreen(
                     ) {
                         Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("Local setup", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.setup_local_badge), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                "Build your workspace",
+                stringResource(R.string.setup_build_workspace),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))
             Box(Modifier.fillMaxWidth().height(42.dp), contentAlignment = Alignment.CenterStart) {
                 Text(
-                    state.startupMessage,
+                    localizeRuntimeMessage(state.startupMessage),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -1544,7 +1892,7 @@ private fun RuntimeInstallationScreen(
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Installation progress", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.setup_installation_progress), color = MaterialTheme.colorScheme.onSurface, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
                         Text("${(state.startupProgress * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
@@ -1558,7 +1906,7 @@ private fun RuntimeInstallationScreen(
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth().height(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Estimated ${setupTimeEstimate(state.selectedDevStacks)}",
+                            stringResource(R.string.setup_estimated_time, setupTimeEstimate(state.selectedDevStacks)),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 11.5.sp,
                         )
@@ -1579,7 +1927,7 @@ private fun RuntimeInstallationScreen(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                "You can leave Mobile Harness in the background and follow setup from the notification.",
+                stringResource(R.string.setup_background_note),
                 modifier = Modifier.fillMaxWidth(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
@@ -1604,13 +1952,11 @@ private fun StartupLoadingScreen(
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
     }
-    val messages = remember {
-        listOf(
-            "Setting up your workspace",
-            "Preparing your coding tools",
-            "Almost ready",
-        )
-    }
+    val messages = listOf(
+        stringResource(R.string.startup_msg_setting_up),
+        stringResource(R.string.startup_msg_preparing_tools),
+        stringResource(R.string.startup_msg_almost_ready),
+    )
     var messageIndex by remember(state.startupStage) { mutableIntStateOf(0) }
     LaunchedEffect(messages) {
         while (true) {
@@ -1678,7 +2024,7 @@ private fun WorkspaceLaunchExperience(state: AppUiState) {
     val agentReady = state.startupMessage.contains("ready", ignoreCase = true) || state.startupProgress >= 0.75f
 
     Text(
-        "PRIVATE MOBILE WORKSPACE",
+        stringResource(R.string.workspace_launch_badge),
         color = MaterialTheme.colorScheme.primary,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
@@ -1686,13 +2032,13 @@ private fun WorkspaceLaunchExperience(state: AppUiState) {
     )
     Spacer(Modifier.height(10.dp))
     Text(
-        "Getting everything ready",
+        stringResource(R.string.workspace_launch_title),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.Bold,
     )
     Spacer(Modifier.height(7.dp))
     Text(
-        "Restoring your projects and reconnecting your local coding agent.",
+        stringResource(R.string.workspace_launch_desc),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 13.sp,
         lineHeight = 19.sp,
@@ -1793,7 +2139,7 @@ private fun WorkspaceLaunchExperience(state: AppUiState) {
     }
     Spacer(Modifier.height(12.dp))
     Text(
-        "Runs locally on this device · Your project files stay private",
+        stringResource(R.string.workspace_launch_footer),
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
         fontSize = 10.5.sp,
@@ -1868,7 +2214,7 @@ private fun SetupLogPanel(logs: List<String>) {
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (expanded) "Live setup terminal" else logs.lastOrNull().orEmpty(),
+                    text = if (expanded) stringResource(R.string.setup_live_terminal) else localizeRuntimeMessage(logs.lastOrNull().orEmpty()),
                     modifier = Modifier.weight(1f),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
@@ -1897,7 +2243,7 @@ private fun SetupLogPanel(logs: List<String>) {
                 ) {
                     logs.forEach { line ->
                         Text(
-                            text = line,
+                            text = localizeRuntimeMessage(line),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             lineHeight = 16.sp,
@@ -2044,8 +2390,8 @@ private fun RootScreenHost(
                     NavigationBarItem(
                         selected = screen == tab,
                         onClick = { screen = tab },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label, fontSize = 11.sp) },
+                        icon = { Icon(tab.icon, contentDescription = stringResource(tab.labelRes)) },
+                        label = { Text(stringResource(tab.labelRes), fontSize = 11.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -2060,7 +2406,7 @@ private fun RootScreenHost(
                 ExtendedFloatingActionButton(
                     onClick = { showQuickTerminal = true },
                     icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
-                    text = { Text("Terminal", fontWeight = FontWeight.SemiBold) },
+                    text = { Text(stringResource(R.string.projects_terminal), fontWeight = FontWeight.SemiBold) },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
@@ -2121,6 +2467,7 @@ private fun RootScreenHost(
                     onDiscoverModels = viewModel::discoverModels,
                     onValidateProvider = viewModel::validateProvider,
                     onSetThemeMode = viewModel::setThemeMode,
+                    onSetLanguage = viewModel::setLanguage,
                     onPing = viewModel::pingApi,
                     onClearTerminal = viewModel::clearTerminal,
                     getSavedApiKey = viewModel::getSavedApiKey,
@@ -2251,6 +2598,8 @@ private fun ProviderSetupScreen(
     agentKind: AgentKind = AgentKind.CLAUDE_CODE,
     initialStep: Int = if (onboarding) 0 else 1,
     onBack: (() -> Unit)? = null,
+    currentLanguageCode: String = "system",
+    onSetLanguage: ((String) -> Unit)? = null,
     onSave: (ProviderProfile, String) -> Unit,
     onDiscover: suspend (ProviderProfile, String) -> ModelDiscoveryResult,
     onValidate: suspend (ProviderProfile, String, List<DiscoveredModel>) -> ConnectionValidation,
@@ -2280,7 +2629,7 @@ private fun ProviderSetupScreen(
 
     val handleBack: (() -> Unit)? = when {
         step > 1 -> { { step = 1 } }
-        !onboarding && onBack != null -> onBack
+        onBack != null -> onBack
         else -> null
     }
 
@@ -2291,20 +2640,26 @@ private fun ProviderSetupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (onboarding) "Set up Mobile Harness" else "AI Provider & Settings") },
+                title = { Text(stringResource(if (onboarding) R.string.setup_mobile_harness else R.string.provider_setup_settings_title)) },
                 navigationIcon = {
                     if (handleBack != null) {
                         IconButton(onClick = handleBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                         }
                     }
                 },
                 actions = {
+                    if (onSetLanguage != null) {
+                        LanguagePickerAction(
+                            currentLanguageCode = currentLanguageCode,
+                            onSelectLanguage = onSetLanguage,
+                        )
+                    }
                     if (onToggleTheme != null) {
                         IconButton(onClick = onToggleTheme) {
                             Icon(
                                 if (themeMode == AppThemeMode.DARK) Icons.Default.LightMode else Icons.Default.DarkMode,
-                                contentDescription = "Toggle theme",
+                                contentDescription = stringResource(R.string.theme_toggle),
                             )
                         }
                     }
@@ -2375,7 +2730,7 @@ private fun DshApiProtocolPicker(selected: String, onSelected: (String) -> Unit)
     val options = listOf("anthropic-messages", "openai-completions", "openai-responses")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "Gateway protocol",
+            stringResource(R.string.provider_gateway_protocol),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
         )
@@ -2401,7 +2756,7 @@ private fun DshApiProtocolPicker(selected: String, onSelected: (String) -> Unit)
             }
         }
         Text(
-            "Pick the protocol your gateway speaks; DeepSeek Harness routes it directly.",
+            stringResource(R.string.provider_gateway_protocol_help),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
         )
@@ -2430,20 +2785,20 @@ private fun DeviceCheckStep(context: Context, onContinue: () -> Unit) {
     val compatible = arm64
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         BrandMark()
-        Text("Your phone is the workspace", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Mobile Harness checks compatibility before downloading the private Linux runtime.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        CheckRow(Icons.Default.Memory, "Memory", "$totalRamLabel GB usable · ${if (totalRamGb >= 7.5) "Full mode" else "Lite mode"}", true)
-        CheckRow(Icons.Default.Code, "Processor", Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown", arm64)
-        CheckRow(Icons.Default.Storage, "Android", "Android ${Build.VERSION.RELEASE}", true)
+        Text(stringResource(R.string.provider_device_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.provider_device_desc), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        CheckRow(Icons.Default.Memory, stringResource(R.string.provider_memory), stringResource(R.string.provider_memory_mode, totalRamLabel, stringResource(if (totalRamGb >= 7.5) R.string.provider_full_mode else R.string.provider_lite_mode)), true)
+        CheckRow(Icons.Default.Code, stringResource(R.string.runtime_setup_processor), Build.SUPPORTED_ABIS.firstOrNull() ?: stringResource(R.string.provider_unknown), arm64)
+        CheckRow(Icons.Default.Storage, "Android", stringResource(R.string.provider_android_version, Build.VERSION.RELEASE), true)
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
             Text(
-                "Only open projects you trust. The local Linux environment is a compatibility layer, not a hardened security sandbox.",
+                stringResource(R.string.provider_security_warning),
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Button(onClick = onContinue, enabled = compatible, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-            Text(if (compatible) "Continue" else "This device is not supported")
+            Text(stringResource(if (compatible) R.string.provider_continue else R.string.runtime_setup_device_not_supported))
         }
     }
 }
@@ -2475,7 +2830,7 @@ private fun ProviderChoiceStep(
     Column(Modifier.fillMaxHeight()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "STEP 2 OF 3",
+                stringResource(R.string.provider_step_of, 2, 3),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = PocketOrange,
@@ -2492,15 +2847,15 @@ private fun ProviderChoiceStep(
                 ) {
                     Icon(Icons.Default.Shield, null, tint = PocketGreen, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Secure setup", color = PocketGreen, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.provider_secure_setup), color = PocketGreen, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
         Spacer(Modifier.height(10.dp))
-        Text("Connect your AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.provider_connect_ai), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
         Text(
-            "Choose how Mobile Harness should access your coding model.",
+            stringResource(R.string.provider_connect_ai_desc),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp,
         )
@@ -2536,7 +2891,7 @@ private fun ProviderChoiceStep(
             Icon(Icons.Default.Key, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(7.dp))
             Text(
-                "API keys are encrypted in Android secure storage.",
+                stringResource(R.string.provider_keys_secure),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
             )
@@ -2550,7 +2905,7 @@ private fun ProviderChoiceStep(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
         ) {
-            Text("Continue", fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.provider_continue), fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, modifier = Modifier.size(18.dp))
         }
@@ -2558,9 +2913,32 @@ private fun ProviderChoiceStep(
             onClick = onChangeAgent,
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp),
         ) {
-            Text("Use another coding agent", fontSize = 12.sp)
+            Text(stringResource(R.string.provider_use_another_agent), fontSize = 12.sp)
         }
     }
+}
+
+@StringRes
+private fun providerTitleResource(provider: ProviderKind): Int = when (provider) {
+    ProviderKind.CLAUDE -> R.string.provider_title_claude
+    ProviderKind.ANTHROPIC -> R.string.provider_title_anthropic
+    ProviderKind.LLM_ROUTER -> R.string.provider_title_openrouter
+    ProviderKind.DEEPSEEK -> R.string.provider_title_deepseek
+    ProviderKind.KIMI -> R.string.provider_title_kimi
+    ProviderKind.OPENCODE_ZEN -> R.string.provider_title_opencode
+    ProviderKind.NVIDIA_NIM -> R.string.provider_title_nvidia
+    ProviderKind.CUSTOM -> R.string.provider_title_custom
+}
+
+@StringRes
+private fun providerSubtitleResource(provider: ProviderKind): Int = when (provider) {
+    ProviderKind.CLAUDE -> R.string.provider_subtitle_claude
+    ProviderKind.ANTHROPIC -> R.string.provider_subtitle_anthropic
+    ProviderKind.LLM_ROUTER -> R.string.provider_subtitle_openrouter
+    ProviderKind.DEEPSEEK -> R.string.provider_subtitle_deepseek
+    ProviderKind.KIMI, ProviderKind.CUSTOM -> R.string.provider_subtitle_anthropic_compatible
+    ProviderKind.OPENCODE_ZEN -> R.string.provider_subtitle_opencode
+    ProviderKind.NVIDIA_NIM -> R.string.provider_subtitle_nvidia
 }
 
 @Composable
@@ -2611,7 +2989,7 @@ private fun ProviderChoiceRow(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    provider.title,
+                    stringResource(providerTitleResource(provider)),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -2623,7 +3001,7 @@ private fun ProviderChoiceRow(
                         shape = RoundedCornerShape(5.dp),
                     ) {
                         Text(
-                            "Beta",
+                            stringResource(R.string.provider_beta),
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
                             color = MaterialTheme.colorScheme.primary,
                             fontSize = 8.sp,
@@ -2634,7 +3012,7 @@ private fun ProviderChoiceRow(
             }
             Spacer(Modifier.height(1.dp))
             Text(
-                provider.subtitle,
+                stringResource(providerSubtitleResource(provider)),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.5.sp,
                 maxLines = 1,
@@ -2676,6 +3054,7 @@ private fun ProviderCredentialsStep(
     onSave: () -> Unit,
     onChangeAgent: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var models by remember(baseUrl) { mutableStateOf(emptyList<DiscoveredModel>()) }
     var isDiscovering by remember { mutableStateOf(false) }
@@ -2714,7 +3093,7 @@ private fun ProviderCredentialsStep(
                 is ModelDiscoveryResult.Success -> {
                     models = result.models
                     statusOk = true
-                    status = "Found ${result.models.size} available model${if (result.models.size == 1) "" else "s"}."
+                    status = context.getString(R.string.provider_models_found, result.models.size)
                     if (model.isBlank() && result.models.isNotEmpty()) onModel(result.models.first().id)
                     if (openWhenReady && result.models.isNotEmpty()) showModels = true
                 }
@@ -2739,9 +3118,9 @@ private fun ProviderCredentialsStep(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Available models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.provider_available_models), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
-                            "${filteredModels.size} of ${models.size} models",
+                            stringResource(R.string.provider_models_count, filteredModels.size, models.size),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                         )
@@ -2751,7 +3130,7 @@ private fun ProviderCredentialsStep(
                         enabled = !isDiscovering,
                     ) {
                         if (isDiscovering) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Refresh, "Refresh models")
+                        else Icon(Icons.Default.Refresh, stringResource(R.string.provider_refresh_models))
                     }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -2759,14 +3138,14 @@ private fun ProviderCredentialsStep(
                     value = modelSearch,
                     onValueChange = { modelSearch = it },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
-                    placeholder = { Text("Search model name or ID") },
+                    placeholder = { Text(stringResource(R.string.provider_search_models)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
                 if (filteredModels.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No matching models", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.provider_no_matching_models), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     LazyColumn(
@@ -2789,7 +3168,7 @@ private fun ProviderCredentialsStep(
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(option.displayName, modifier = Modifier.weight(1f, fill = false), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        if (option.isFree) Text("  FREE", color = Color(0xFF58C99C), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        if (option.isFree) Text(stringResource(R.string.provider_free), color = Color(0xFF58C99C), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                     if (option.displayName != option.id) {
                                         Text(option.id, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2821,24 +3200,24 @@ private fun ProviderCredentialsStep(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("STEP 3 OF 3", color = PocketOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(stringResource(R.string.provider_step_of, 3, 3), color = PocketOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.weight(1f))
                 Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Key, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(6.dp))
-                        Text("Encrypted locally", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.provider_encrypted_locally), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Text(provider.title, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text(stringResource(providerTitleResource(provider)), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(5.dp))
             Text(
                 when {
-                    agentKind == AgentKind.DEEPSEEK_HARNESS -> "DeepSeek Harness will connect through this API endpoint."
-                    provider.protocol.name.startsWith("OPENAI") -> "Mobile Harness will translate Claude Code requests for this provider."
-                    else -> "Claude Code will connect through this API endpoint."
+                    agentKind == AgentKind.DEEPSEEK_HARNESS -> stringResource(R.string.provider_endpoint_deepseek)
+                    provider.protocol.name.startsWith("OPENAI") -> stringResource(R.string.provider_endpoint_translate)
+                    else -> stringResource(R.string.provider_endpoint_claude)
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2853,9 +3232,9 @@ private fun ProviderCredentialsStep(
                     OutlinedTextField(
                         baseUrl,
                         { onBaseUrl(it); status = null; statusDetails = null; models = emptyList() },
-                        label = { Text("Base URL") },
+                        label = { Text(stringResource(R.string.provider_base_url)) },
                         supportingText = {
-                            if (provider.fixedBaseUrl) Text("Fixed by ${provider.title}")
+                            if (provider.fixedBaseUrl) Text(stringResource(R.string.provider_fixed_by, stringResource(providerTitleResource(provider))))
                         },
                         readOnly = provider.fixedBaseUrl,
                         enabled = !provider.fixedBaseUrl,
@@ -2868,10 +3247,10 @@ private fun ProviderCredentialsStep(
                     OutlinedTextField(
                         apiKey,
                         { onApiKey(it); status = null; statusDetails = null },
-                        label = { Text("API key") },
-                        placeholder = { Text(if (hasStoredSecret) "Saved securely — leave blank to keep it" else "Enter your API key") },
+                        label = { Text(stringResource(R.string.provider_api_key)) },
+                        placeholder = { Text(stringResource(if (hasStoredSecret) R.string.provider_saved_key_placeholder else R.string.provider_enter_key)) },
                         supportingText = {
-                            if (hasStoredSecret && apiKey.isBlank()) Text("A saved key is ready to use")
+                            if (hasStoredSecret && apiKey.isBlank()) Text(stringResource(R.string.provider_saved_key_ready))
                         },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -2881,8 +3260,8 @@ private fun ProviderCredentialsStep(
                     OutlinedTextField(
                         model,
                         { onModel(it); status = null; statusDetails = null },
-                        label = { Text("Model name") },
-                        supportingText = { Text("Select an available model or enter an exact model ID.") },
+                        label = { Text(stringResource(R.string.provider_model_name)) },
+                        supportingText = { Text(stringResource(R.string.provider_model_help)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -2903,7 +3282,7 @@ private fun ProviderCredentialsStep(
                 }
                 Icon(if (models.isEmpty()) Icons.Default.Search else Icons.Default.KeyboardArrowDown, null, Modifier.size(19.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(if (models.isEmpty()) "Find available models" else "Available models (${models.size})")
+                Text(if (models.isEmpty()) stringResource(R.string.provider_find_models) else stringResource(R.string.provider_available_models_count, models.size))
             }
         }
         if (status != null) {
@@ -2929,7 +3308,7 @@ private fun ProviderCredentialsStep(
                     onClick = {
                         scope.launch {
                             isValidating = true
-                            status = "Checking API key, model, and Claude Code settings…"
+                            status = context.getString(R.string.provider_checking_settings)
                             statusDetails = null
                             statusOk = true
                             when (val result = onValidate(models)) {
@@ -2954,7 +3333,7 @@ private fun ProviderCredentialsStep(
                         CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(7.dp))
                     }
-                    Text(if (isValidating) "Checking" else "Continue")
+                    Text(stringResource(if (isValidating) R.string.provider_checking else R.string.provider_continue))
             }
         }
         item {
@@ -2962,7 +3341,7 @@ private fun ProviderCredentialsStep(
                 onClick = onChangeAgent,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Use another coding agent", fontSize = 12.sp)
+                Text(stringResource(R.string.provider_use_another_agent), fontSize = 12.sp)
             }
         }
     }
@@ -2986,21 +3365,21 @@ private fun ClaudeSubscriptionCredentialsStep(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("STEP 3 OF 3", color = PocketOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text(stringResource(R.string.provider_step_of, 3, 3), color = PocketOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.weight(1f))
                 Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Key, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(6.dp))
-                        Text("Encrypted locally", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.provider_encrypted_locally), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             Spacer(Modifier.height(16.dp))
-            Text("Claude subscription", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.provider_title_claude), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Connect a Claude Pro, Max, Team, or Enterprise subscription to Claude Code.",
+                stringResource(R.string.provider_claude_connect_desc),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -3011,7 +3390,7 @@ private fun ClaudeSubscriptionCredentialsStep(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("1. On a computer where Claude Code is installed, run:", fontSize = 13.sp)
+                    Text(stringResource(R.string.provider_claude_step_one), fontSize = 13.sp)
                     Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(10.dp)) {
                         Text(
                             "claude setup-token",
@@ -3020,19 +3399,19 @@ private fun ClaudeSubscriptionCredentialsStep(
                             color = PocketOrange,
                         )
                     }
-                    Text("2. Sign in to Claude and paste the generated token here.", fontSize = 13.sp)
+                    Text(stringResource(R.string.provider_claude_step_two), fontSize = 13.sp)
                     OutlinedTextField(
                         value = token,
                         onValueChange = onToken,
-                        label = { Text("Claude setup token") },
-                        placeholder = { Text(if (hasStoredToken) "Saved securely — leave blank to keep it" else "Paste token") },
-                        supportingText = if (hasStoredToken && token.isBlank()) ({ Text("A saved subscription token is ready to use") }) else null,
+                        label = { Text(stringResource(R.string.provider_claude_token)) },
+                        placeholder = { Text(stringResource(if (hasStoredToken) R.string.provider_saved_key_placeholder else R.string.provider_paste_token)) },
+                        supportingText = if (hasStoredToken && token.isBlank()) ({ Text(stringResource(R.string.provider_saved_token_ready)) }) else null,
                         singleLine = true,
                         visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
                             IconButton(onClick = { tokenVisible = !tokenVisible }) {
-                                Icon(if (tokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Toggle token visibility")
+                                Icon(if (tokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility, stringResource(R.string.provider_toggle_token_visibility))
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -3046,12 +3425,12 @@ private fun ClaudeSubscriptionCredentialsStep(
                 enabled = hasToken,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
             ) {
-                Text("Save and continue")
+                Text(stringResource(R.string.provider_save_continue))
             }
         }
         item {
             TextButton(onClick = onChangeAgent, modifier = Modifier.fillMaxWidth()) {
-                Text("Use another coding agent", fontSize = 12.sp)
+                Text(stringResource(R.string.provider_use_another_agent), fontSize = 12.sp)
             }
         }
     }
@@ -3114,8 +3493,8 @@ private fun ProjectsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("Build from your phone", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("Chat, review changes, and preview your project.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.projects_hero_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.projects_hero_desc), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -3135,7 +3514,7 @@ private fun ProjectsScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "Quick project",
+                            text = stringResource(R.string.projects_quick_project),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp,
                             maxLines = 1,
@@ -3155,7 +3534,7 @@ private fun ProjectsScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "New project",
+                            text = stringResource(R.string.projects_new_project),
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp,
                             maxLines = 1,
@@ -3180,9 +3559,9 @@ private fun ProjectsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("Bring an existing project", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.projects_bring_existing), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    if (isImportExpanded) "Import files or clone complete Git history" else "ZIP file, Git repository, or GitHub",
+                                    stringResource(if (isImportExpanded) R.string.projects_import_expanded else R.string.projects_import_sources),
                                     fontSize = 10.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -3204,7 +3583,7 @@ private fun ProjectsScreen(
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                                     ImportSourceButton(
                                         icon = Icons.Default.Download,
-                                        title = if (state.projectImporting) "Importing…" else "ZIP file",
+                                        title = stringResource(if (state.projectImporting) R.string.projects_importing else R.string.projects_zip_file),
                                         enabled = !state.projectImporting && !state.gitCloneRunning,
                                         modifier = Modifier.weight(1f),
                                         onClick = { importZipLauncher.launch("*/*") },
@@ -3212,7 +3591,7 @@ private fun ProjectsScreen(
                                     )
                                     ImportSourceButton(
                                         icon = Icons.Default.Code,
-                                        title = if (state.gitCloneRunning) "Cloning…" else "Git URL",
+                                        title = stringResource(if (state.gitCloneRunning) R.string.projects_cloning else R.string.projects_git_url),
                                         enabled = !state.projectImporting && !state.gitCloneRunning,
                                         modifier = Modifier.weight(1f),
                                         onClick = { showGitDialog = true },
@@ -3233,12 +3612,12 @@ private fun ProjectsScreen(
                                         Spacer(Modifier.width(10.dp))
                                         Column(Modifier.weight(1f)) {
                                             Text(
-                                                state.githubLogin?.let { "GitHub · @$it" } ?: "Connect GitHub",
+                                                state.githubLogin?.let { stringResource(R.string.projects_github_account, it) } ?: stringResource(R.string.projects_connect_github),
                                                 fontSize = 12.5.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                             )
                                             Text(
-                                                if (state.githubLogin != null) "Browse public and private repositories" else "Sign in to access your repositories",
+                                                stringResource(if (state.githubLogin != null) R.string.projects_browse_repositories else R.string.projects_sign_in_repositories),
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             )
@@ -3276,7 +3655,7 @@ private fun ProjectsScreen(
                     }
                 }
             }
-            item { Text("Your projects", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
+            item { Text(stringResource(R.string.projects_your_projects), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             if (projects.isEmpty()) {
                 item {
                     Card(
@@ -3309,13 +3688,13 @@ private fun ProjectsScreen(
                             }
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "No projects yet",
+                                stringResource(R.string.projects_empty_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
                             )
                             Text(
-                                "Create a named project or start instantly with a Quick Project.",
+                                stringResource(R.string.projects_empty_desc),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
@@ -4027,8 +4406,8 @@ private fun WorkspaceScreen(
                             if (tab == WorkspaceTab.FILES) onRefreshFiles()
                             if (tab == WorkspaceTab.TERMINAL) onTerminalOpened()
                         },
-                        icon = { Icon(tab.icon, tab.label) },
-                        label = { Text(tab.label, fontSize = 10.sp) },
+                        icon = { Icon(tab.icon, stringResource(tab.labelRes)) },
+                        label = { Text(stringResource(tab.labelRes), fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,

@@ -32,6 +32,10 @@ class AppPreferences(private val context: Context) {
         get() = preferences.getBoolean("background_setup_complete", false)
         set(value) { preferences.edit().putBoolean("background_setup_complete", value).apply() }
 
+    var initialLanguageSelected: Boolean
+        get() = preferences.getBoolean("initial_language_selected", onboardingComplete || runtimeSetupComplete)
+        set(value) { preferences.edit().putBoolean("initial_language_selected", value).apply() }
+
     /** Coding agent engine the user picked during setup. Absent = pre-agent-choice install → Claude. */
     var agentKind: String
         get() = preferences.getString("agent_kind", AgentKind.CLAUDE_CODE.stableId) ?: AgentKind.CLAUDE_CODE.stableId
@@ -97,6 +101,10 @@ class AppPreferences(private val context: Context) {
     var themeMode: String
         get() = preferences.getString("theme_mode", "dark") ?: "dark"
         set(value) { preferences.edit().putString("theme_mode", value).apply() }
+
+    var languageCode: String
+        get() = preferences.getString("language_code", "system") ?: "system"
+        set(value) { preferences.edit().putString("language_code", value).apply() }
 
     var legacySeededCredentialRemoved: Boolean
         get() = preferences.getBoolean("legacy_seeded_credential_removed", false)

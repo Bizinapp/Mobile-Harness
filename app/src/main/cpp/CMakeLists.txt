@@ -130,6 +130,8 @@ add_custom_command(TARGET prootloader-carrier POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:prootloader>" "$<TARGET_FILE:prootloader-carrier>"
 )
 
-foreach(target pocketspawn talloc android-shmem proot proot-carrier prootloader-carrier)
+# The loader is copied verbatim into libprootloader.so, so it needs the same
+# flexible-page-size alignment as the shared-library carrier targets.
+foreach(target pocketspawn talloc android-shmem prootloader proot proot-carrier prootloader-carrier)
     target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384")
 endforeach()

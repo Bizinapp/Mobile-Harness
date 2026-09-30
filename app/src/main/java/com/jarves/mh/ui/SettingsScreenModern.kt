@@ -101,12 +101,16 @@ import com.jarves.mh.model.providersForAgent
 import com.jarves.mh.network.ConnectionValidation
 import com.jarves.mh.network.DiscoveredModel
 import com.jarves.mh.network.ModelDiscoveryResult
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.ui.res.stringResource
+import com.jarves.mh.R
 import com.jarves.mh.runtime.AntigravityAuthStatus
+import com.jarves.mh.ui.theme.AppLanguage
 import com.jarves.mh.ui.theme.AppThemeMode
 import com.jarves.mh.ui.theme.PocketOrange
 import kotlinx.coroutines.launch
 
-private enum class SettingsSection { APPEARANCE, TOOLS, RUNTIME, UPDATE_CHANNEL }
+private enum class SettingsSection { APPEARANCE, LANGUAGE, TOOLS, RUNTIME, UPDATE_CHANNEL }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +120,7 @@ fun SettingsScreen(
     onDiscoverModels: suspend (ProviderProfile, String) -> ModelDiscoveryResult,
     onValidateProvider: suspend (ProviderProfile, String, List<DiscoveredModel>) -> ConnectionValidation,
     onSetThemeMode: (AppThemeMode) -> Unit,
+    onSetLanguage: (String) -> Unit = {},
     onPing: () -> Unit,
     onClearTerminal: () -> Unit,
     getSavedApiKey: (ProviderKind) -> String,
@@ -196,8 +201,8 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text("Settings", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                            Text("Preferences & Configuration", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                            Text(stringResource(R.string.settings_subtitle), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 },
@@ -213,16 +218,73 @@ fun SettingsScreen(
 
             item {
                 SettingsAccordion(
-                    title = "Appearance",
-                    subtitle = when (state.themeMode) { AppThemeMode.DARK -> "Dark theme"; AppThemeMode.LIGHT -> "Light theme"; AppThemeMode.SYSTEM -> "Follow system" },
+                    title = stringResource(R.string.settings_appearance),
+                    subtitle = when (state.themeMode) {
+                        AppThemeMode.DARK -> stringResource(R.string.theme_dark_subtitle)
+                        AppThemeMode.LIGHT -> stringResource(R.string.theme_light_subtitle)
+                        AppThemeMode.SYSTEM -> stringResource(R.string.theme_system_subtitle)
+                    },
                     icon = Icons.Default.Tune,
                     expanded = expanded == SettingsSection.APPEARANCE,
                     onClick = { toggle(SettingsSection.APPEARANCE) },
                 ) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ModernThemeChoice("Dark", Icons.Default.DarkMode, state.themeMode == AppThemeMode.DARK, { onSetThemeMode(AppThemeMode.DARK) }, Modifier.weight(1f))
-                        ModernThemeChoice("Light", Icons.Default.LightMode, state.themeMode == AppThemeMode.LIGHT, { onSetThemeMode(AppThemeMode.LIGHT) }, Modifier.weight(1f))
-                        ModernThemeChoice("System", Icons.Default.PhoneAndroid, state.themeMode == AppThemeMode.SYSTEM, { onSetThemeMode(AppThemeMode.SYSTEM) }, Modifier.weight(1f))
+                        ModernThemeChoice(stringResource(R.string.theme_dark), Icons.Default.DarkMode, state.themeMode == AppThemeMode.DARK, { onSetThemeMode(AppThemeMode.DARK) }, Modifier.weight(1f))
+                        ModernThemeChoice(stringResource(R.string.theme_light), Icons.Default.LightMode, state.themeMode == AppThemeMode.LIGHT, { onSetThemeMode(AppThemeMode.LIGHT) }, Modifier.weight(1f))
+                        ModernThemeChoice(stringResource(R.string.theme_system), Icons.Default.PhoneAndroid, state.themeMode == AppThemeMode.SYSTEM, { onSetThemeMode(AppThemeMode.SYSTEM) }, Modifier.weight(1f))
+                    }
+                }
+            }
+
+            item {
+                val currentLang = AppLanguage.fromCode(state.languageCode)
+                val langSubtitle = if (currentLang == AppLanguage.SYSTEM) {
+                    stringResource(R.string.language_system_default)
+                } else {
+                    "${currentLang.displayName} (${currentLang.nativeName})"
+                }
+                SettingsAccordion(
+                    title = stringResource(R.string.settings_language),
+                    subtitle = langSubtitle,
+                    icon = Icons.Default.Language,
+                    expanded = expanded == SettingsSection.LANGUAGE,
+                    onClick = { toggle(SettingsSection.LANGUAGE) },
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        AppLanguage.entries.forEachIndexed { index, lang ->
+                            val isSelected = (state.languageCode == lang.code) ||
+                                (state.languageCode.isBlank() && lang == AppLanguage.SYSTEM)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSetLanguage(lang.code) }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (lang == AppLanguage.SYSTEM) {
+                                            stringResource(R.string.language_system_default)
+                                        } else {
+                                            lang.nativeName
+                                        },
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 14.sp,
+                                    )
+                                    if (lang != AppLanguage.SYSTEM) {
+                                        Text(
+                                            text = lang.displayName,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                SelectionDot(isSelected)
+                            }
+                            if (index != AppLanguage.entries.lastIndex) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            }
+                        }
                     }
                 }
             }
@@ -230,8 +292,8 @@ fun SettingsScreen(
             item {
                 val installedCount = state.installedDevStacks.count { it != DevStack.WEB }
                 SettingsAccordion(
-                    title = "Developer tools",
-                    subtitle = "Core tools + $installedCount optional toolchain${if (installedCount == 1) "" else "s"}",
+                    title = stringResource(R.string.settings_tools),
+                    subtitle = stringResource(R.string.tools_subtitle, installedCount),
                     icon = Icons.Default.Code,
                     expanded = expanded == SettingsSection.TOOLS,
                     onClick = { toggle(SettingsSection.TOOLS) },
@@ -248,14 +310,14 @@ fun SettingsScreen(
                                 Text(stack.installsSummary, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             when {
-                                removing -> Text("Removing…", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                removing -> Text(stringResource(R.string.tools_removing), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 installing -> Text("${(state.devStackProgress * 100).toInt()}%", color = PocketOrange, fontWeight = FontWeight.Bold)
-                                installed && stack == DevStack.WEB -> Text("Included", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                installed && stack == DevStack.WEB -> Text(stringResource(R.string.tools_included), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 installed -> TextButton(
                                     onClick = { stackPendingRemoval = stack },
                                     enabled = state.devStackInstalling == null,
-                                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
-                                else -> OutlinedButton(onClick = { onInstallDevStack(stack) }, enabled = state.devStackInstalling == null) { Text("Add") }
+                                ) { Text(stringResource(R.string.action_remove), color = MaterialTheme.colorScheme.error) }
+                                else -> OutlinedButton(onClick = { onInstallDevStack(stack) }, enabled = state.devStackInstalling == null) { Text(stringResource(R.string.action_add)) }
                             }
                         }
                         if (installing) {
@@ -314,21 +376,21 @@ fun SettingsScreen(
 
             item {
                 SettingsAccordion(
-                    title = "Linux runtime",
+                    title = stringResource(R.string.settings_runtime),
                     subtitle = "Ubuntu 20.04 PRoot · ARM64",
                     icon = Icons.Default.Terminal,
                     expanded = expanded == SettingsSection.RUNTIME,
                     onClick = { toggle(SettingsSection.RUNTIME) },
                 ) {
-                    RuntimeInfoRow("Architecture", "ARM64 (aarch64)")
-                    RuntimeInfoRow("Environment", "Ubuntu 20.04 PRoot")
+                    RuntimeInfoRow(stringResource(R.string.runtime_architecture), "ARM64 (aarch64)")
+                    RuntimeInfoRow(stringResource(R.string.runtime_environment), "Ubuntu 20.04 PRoot")
                     RuntimeInfoRow(
-                        "Active agent",
+                        stringResource(R.string.runtime_active_agent),
                         state.agentKind.title + if (state.installedAgentVersions.containsKey(state.agentKind)) "" else " · Not installed",
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Text(
-                        "Installed agents",
+                        stringResource(R.string.runtime_installed_agents),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -349,13 +411,13 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.DeleteSweep, null, Modifier.size(17.dp))
                         Spacer(Modifier.width(7.dp))
-                        Text(if (terminalCleared) "Terminal history cleared" else "Clear terminal history")
+                        Text(if (terminalCleared) stringResource(R.string.runtime_history_cleared) else stringResource(R.string.runtime_clear_history))
                     }
                     OutlinedButton(
                         onClick = { showReliabilityHelp = !showReliabilityHelp },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Advanced runtime reliability")
+                        Text(stringResource(R.string.runtime_advanced_reliability))
                     }
                     AnimatedVisibility(showReliabilityHelp) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,7 +458,7 @@ fun SettingsScreen(
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Mobile Harness", fontWeight = FontWeight.SemiBold)
-                            Text("Local AI coding workspace", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.settings_app_desc), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("v${BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -422,16 +484,16 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Privacy policy", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.settings_privacy), fontWeight = FontWeight.Medium)
                         Text(
-                            "How local data and AI provider requests are handled",
+                            stringResource(R.string.settings_privacy_desc),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Icon(
                         Icons.AutoMirrored.Filled.OpenInNew,
-                        contentDescription = "Open privacy policy",
+                        contentDescription = stringResource(R.string.settings_privacy),
                         modifier = Modifier.size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
