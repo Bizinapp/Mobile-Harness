@@ -140,6 +140,19 @@ private fun agentProviderSubtitleResource(provider: ProviderKind): Int = when (p
     ProviderKind.NVIDIA_NIM -> R.string.provider_subtitle_nvidia
 }
 
+@Composable
+private fun localizeAgentInstallMessage(message: String): String {
+    val trimmed = message.trim().removePrefix("• ").removePrefix("- ").trim()
+    return if (trimmed.startsWith("Downloading ") && trimmed.endsWith(" bundle")) {
+        stringResource(
+            R.string.runtime_msg_downloading_bundle,
+            trimmed.removePrefix("Downloading ").removeSuffix(" bundle"),
+        )
+    } else {
+        message
+    }
+}
+
 /** Formats Antigravity model identifiers into clean, human-friendly names. */
 internal fun formatAntigravityModelName(id: String): String = when (id) {
     "gemini-3.8-flash-high" -> "Gemini 3.8 Flash (High)"
@@ -900,7 +913,8 @@ fun AgentScreen(
                                     CircularProgressIndicator(Modifier.size(13.dp), strokeWidth = 1.6.dp)
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        state.agentMessage ?: "Installing agent binary…",
+                                        state.agentMessage?.let { localizeAgentInstallMessage(it) }
+                                            ?: stringResource(R.string.agent_installing_binary),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
@@ -941,6 +955,13 @@ fun AgentScreen(
                             }
                         }
                     } else if (!viewedAgentInstalled) {
+                        val viewedAgentTitle = stringResource(
+                            when (viewedAgent) {
+                                AgentKind.CLAUDE_CODE -> R.string.agent_title_claude
+                                AgentKind.DEEPSEEK_HARNESS -> R.string.agent_title_deepseek
+                                AgentKind.ANTIGRAVITY -> R.string.agent_title_antigravity
+                            },
+                        )
                         Spacer(Modifier.height(8.dp))
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -950,13 +971,13 @@ fun AgentScreen(
                         ) {
                             Column(Modifier.padding(16.dp)) {
                                 Text(
-                                    "${viewedAgent.title} is not installed",
+                                    stringResource(R.string.agent_not_installed, viewedAgentTitle),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "Install its ${viewedAgent.downloadNote} agent package to use it with your existing projects.",
+                                    stringResource(R.string.agent_install_description, viewedAgent.downloadNote),
                                     fontSize = 12.sp,
                                     lineHeight = 17.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -968,7 +989,7 @@ fun AgentScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
                                 ) {
-                                    Text("Install ${viewedAgent.title}", fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.agent_install_action, viewedAgentTitle), fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1588,8 +1609,8 @@ private fun AgentProviderCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(kind.title, fontWeight = FontWeight.Medium, fontSize = 13.sp)
-                                        Text(kind.subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                        Text(stringResource(agentProviderTitleResource(kind)), fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                        Text(stringResource(agentProviderSubtitleResource(kind)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                     }
                                     AgentSelectionDot(selectedKind == kind)
                                 }
@@ -1636,8 +1657,8 @@ private fun AgentProviderCard(
                         OutlinedTextField(
                             value = baseUrl,
                             onValueChange = { if (!selectedKind.fixedBaseUrl) onBaseUrl(it) },
-                            label = { Text("Base URL") },
-                            supportingText = if (selectedKind.fixedBaseUrl) ({ Text("Fixed by ${selectedKind.title}") }) else null,
+                            label = { Text(stringResource(R.string.provider_base_url)) },
+                            supportingText = if (selectedKind.fixedBaseUrl) ({ Text(stringResource(R.string.provider_fixed_by, stringResource(agentProviderTitleResource(selectedKind)))) }) else null,
                             readOnly = selectedKind.fixedBaseUrl,
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
@@ -1677,7 +1698,7 @@ private fun AgentProviderCard(
                         }
                         if (state.agentKind == AgentKind.DEEPSEEK_HARNESS && selectedKind in DSH_PROTOCOL_PROVIDERS && !selectedKind.fixedProtocol) {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Text("Gateway protocol", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.provider_gateway_protocol), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(5.dp))
                                 Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)) {
                                     Column {

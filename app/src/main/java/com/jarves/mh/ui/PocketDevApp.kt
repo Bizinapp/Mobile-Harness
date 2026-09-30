@@ -4465,7 +4465,7 @@ private fun WorkspaceScreen(
                     onClear = onTerminalClear,
                     onToggleTheme = {},
                     themeMode = state.themeMode,
-                    title = "Project Terminal",
+                    title = stringResource(R.string.workspace_project_terminal),
                     subtitle = "${state.projectTerminalCwd} · Ubuntu PRoot",
                     liveOutput = state.projectTerminalLiveOutput,
                     currentCommand = state.projectTerminalCommand,
@@ -4696,7 +4696,7 @@ private fun FilesTab(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Files",
+                        stringResource(R.string.workspace_files),
                         Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -4737,7 +4737,7 @@ private fun FilesTab(
             }
         }
         if (!loading && files.isEmpty()) {
-            item { EmptyState(Icons.Default.Folder, "No files yet", "Ask your coding agent to create something in this project.") }
+            item { EmptyState(Icons.Default.Folder, stringResource(R.string.workspace_no_files), stringResource(R.string.workspace_no_files_description)) }
         }
         items(visibleFiles, key = { it.path }) { entry ->
             Row(
@@ -5003,7 +5003,7 @@ private fun ChatTab(
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (prompt.isEmpty()) {
                                         Text(
-                                            text = "Message ${agentKind.title}…",
+                                            text = stringResource(R.string.chat_message_agent, stringResource(agentTitleResource(agentKind))),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 15.sp,
                                         )
@@ -5404,6 +5404,11 @@ private fun formatDuration(totalSeconds: Long): String = when {
 
 @Composable
 private fun MessageBubble(message: ChatMessage, onRunInTerminal: (String) -> Unit, onOpenAttachment: (ChatAttachment) -> Unit) {
+    val displayedText = if (!message.fromUser && message.text == "Hi! Tell me what you want to build or change.") {
+        stringResource(R.string.chat_welcome)
+    } else {
+        message.text
+    }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) {
         Surface(
             color = if (message.fromUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
@@ -5421,7 +5426,7 @@ private fun MessageBubble(message: ChatMessage, onRunInTerminal: (String) -> Uni
                         )
                     } else {
                         MarkdownText(
-                            markdown = message.text,
+                            markdown = displayedText,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
                             color = MaterialTheme.colorScheme.onSurface,
                             onRunCode = onRunInTerminal,
@@ -5706,7 +5711,7 @@ private fun PreviewTab(ready: Boolean, url: String?) {
                         },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        label = { Text("Preview URL") },
+                        label = { Text(stringResource(R.string.workspace_preview_url)) },
                         placeholder = { Text("localhost:3000") },
                         leadingIcon = {
                             Box(
@@ -5749,7 +5754,7 @@ private fun PreviewTab(ready: Boolean, url: String?) {
         }
         val targetUrl = activeUrl
         if (targetUrl == null) {
-            EmptyState(Icons.Default.PlayArrow, "Preview not running", "Enter a localhost URL above, or start a local web server in the project Terminal.")
+            EmptyState(Icons.Default.PlayArrow, stringResource(R.string.workspace_preview_not_running), stringResource(R.string.workspace_preview_not_running_description))
         } else {
             AndroidView(
                 factory = { context ->
