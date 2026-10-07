@@ -173,6 +173,17 @@ class ClaudeRuntimeBridge(
                 add(launch.environment["ANTHROPIC_MODEL"] ?: provider.model)
                 add("--max-turns")
                 add("25")
+                // --- Voice Harness: phone tools + learned memory (all optional; skipped if not installed) ---
+                val vhDir = File(installed.rootfs, "root/vh")
+                if (File(vhDir, "mcp.json").exists()) {
+                    add("--mcp-config"); add("/root/vh/mcp.json")
+                    // Phone tools run without a per-tap prompt unless the user creates /root/vh/strict_phone_approvals.
+                    if (!File(vhDir, "strict_phone_approvals").exists()) { add("--allowedTools"); add("mcp__phone") }
+                }
+                File(vhDir, "state/addendum.md").takeIf { it.exists() }?.let { f ->
+                    val text = f.readText(); f.delete()               // one-shot: staged by LearningSidecar.prepare()
+                    if (text.isNotBlank()) { add("--append-system-prompt"); add(text) }
+                }
             }
             Log.d("ClaudeBridge", "Launching command: $command")
             val process = installer.process(

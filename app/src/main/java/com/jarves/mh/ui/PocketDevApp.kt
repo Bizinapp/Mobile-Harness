@@ -173,6 +173,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.jarves.mh.voice.asLearningVoiceBackend
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -330,6 +332,7 @@ fun PocketDevApp(viewModel: MainViewModel = viewModel()) {
             onSend = viewModel::sendPrompt,
             onStop = viewModel::stopTask,
             onApproval = viewModel::answerApproval,
+            voiceBackend = androidx.compose.runtime.remember(viewModel) { viewModel.asVoiceBackend() },
             onRefreshFiles = viewModel::refreshProjectFiles,
             onOpenFile = viewModel::openFile,
             onCloseFile = viewModel::closeFile,
@@ -3813,6 +3816,11 @@ private fun WorkspaceScreen(
     onSend: (String) -> Unit,
     onStop: () -> Unit,
     onApproval: (Boolean) -> Unit,
+    voiceBackend: com.jarves.mh.voice.VoiceBackend = object : com.jarves.mh.voice.VoiceBackend {
+        override fun sendPrompt(text: String) {}
+        override fun stopTask() {}
+        override fun answerApproval(approved: Boolean) {}
+    },
     onRefreshFiles: () -> Unit,
     onOpenFile: (WorkspaceEntry) -> Unit,
     onCloseFile: () -> Unit,
@@ -4040,6 +4048,11 @@ private fun WorkspaceScreen(
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
+            if (selectedTab == WorkspaceTab.CHAT) {
+                Surface(Modifier.align(Alignment.TopCenter).zIndex(1f), tonalElevation = 3.dp) {
+                    com.jarves.mh.voice.VoiceBar(state, voiceBackend)
+                }
+            }
             when (selectedTab) {
                 WorkspaceTab.CHAT -> ChatTab(
                     state.messages,
