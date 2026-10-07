@@ -239,14 +239,18 @@ class VoicePackStore(private val context: Context) {
             root.mkdirs()
             val replacement = File(root, ".${verified.manifest.id}.${UUID.randomUUID()}.new")
             if (!stage.renameTo(replacement)) throw VoicePackException("Could not stage voice pack")
-            if (destination.exists() && !destination.deleteRecursively()) {
+            val backup = File(root, ".${verified.manifest.id}.${UUID.randomUUID()}.old")
+            val hadPrevious = destination.exists()
+            if (hadPrevious && !destination.renameTo(backup)) {
                 replacement.deleteRecursively()
-                throw VoicePackException("Could not replace existing voice pack")
+                throw VoicePackException("Could not stage replacement for existing voice pack")
             }
             if (!replacement.renameTo(destination)) {
+                if (hadPrevious) backup.renameTo(destination)
                 replacement.deleteRecursively()
                 throw VoicePackException("Could not activate voice pack")
             }
+            if (hadPrevious) backup.deleteRecursively()
             return VoicePackVerifier.verify(destination)
         } finally {
             stage.deleteRecursively()
